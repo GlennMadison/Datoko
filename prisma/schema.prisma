@@ -1,0 +1,289 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @db.Timestamptz(3)
+  sessions      Session[]
+  accounts      Account[]
+  shops         Shop[]
+  authAttempts  AuthAttempt[]
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime @db.Timestamptz(3)
+  token     String   @unique
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  id                     String    @id
+  accountId              String
+  providerId             String
+  userId                 String
+  user                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken            String?
+  refreshToken           String?
+  idToken                String?
+  accessTokenExpiresAt   DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  scope                  String?
+  password               String?
+  createdAt              DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+  @@index([identifier])
+  @@map("verifications")
+}
+
+model Shop {
+  id             String   @id @default(cuid())
+  ownerId        String
+  owner          User     @relation(fields: [ownerId], references: [id])
+  sourceShopId   String
+  environment    String
+  name           String
+  currency       String   @default("IDR")
+  timezone       String   @default("Asia/Jakarta")
+  createdAt      DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @db.Timestamptz(3)
+  connection     ShopConnection?
+  orders         Order[]
+  variants       ProductVariant[]
+  returns        ReturnCase[]
+  syncStates     SyncState[]
+  syncRuns       SyncRun[]
+  @@unique([environment, sourceShopId])
+  @@index([ownerId])
+  @@map("shops")
+}
+
+model ShopConnection {
+  id                 String    @id @default(cuid())
+  shopId             String    @unique
+  shop               Shop      @relation(fields: [shopId], references: [id])
+  status             String    @default("CONNECTED")
+  version            Int       @default(1)
+  accessTokenCipher  String?
+  refreshTokenCipher String?
+  accessExpiresAt    DateTime? @db.Timestamptz(3)
+  refreshExpiresAt   DateTime? @db.Timestamptz(3)
+  connectedAt        DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+  lastErrorCode      String?
+  @@map("shop_connections")
+}
+
+model AuthAttempt {
+  id                String    @id @default(cuid())
+  ownerId           String
+  owner             User      @relation(fields: [ownerId], references: [id])
+  sessionHash       String
+  stateHash         String    @unique
+  browserHash       String
+  expectedShopId    String
+  environment       String
+  returnPath        String    @default("/settings/integrations")
+  status            String    @default("PENDING")
+  codeHash          String?   @unique
+  resultShopId      String?
+  errorCode         String?
+  expiresAt         DateTime  @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  @@index([ownerId, sessionHash, status])
+  @@map("auth_attempts")
+}
+
+model ProductVariant {
+  id            String   @id @default(cuid())
+  shopId        String
+  shop          Shop     @relation(fields: [shopId], references: [id])
+  sourceItemId  String
+  sourceModelId String
+  name          String
+  sku           String?
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  costs         SkuCostVersion[]
+  orderItems    OrderItem[]
+  @@unique([shopId, sourceItemId, sourceModelId])
+  @@index([shopId, sku])
+  @@map("product_variants")
+}
+
+model SkuCostVersion {
+  id          String   @id @default(cuid())
+  variantId   String
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  amount      Decimal  @db.Decimal(20, 4)
+  currency    String   @default("IDR")
+  effectiveAt DateTime @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  createdBy   String
+  note        String?
+  @@index([variantId, effectiveAt])
+  @@map("sku_cost_versions")
+}
+
+model Order {
+  id                String    @id @default(cuid())
+  shopId            String
+  shop              Shop      @relation(fields: [shopId], references: [id])
+  orderSn           String
+  status            String
+  currency          String    @default("IDR")
+  totalAmount       Decimal   @db.Decimal(20, 4)
+  merchandiseAmount Decimal   @db.Decimal(20, 4)
+  sourceCreatedAt   DateTime  @db.Timestamptz(3)
+  sourceUpdatedAt   DateTime  @db.Timestamptz(3)
+  lastSyncedAt      DateTime  @default(now()) @db.Timestamptz(3)
+  items             OrderItem[]
+  history           OrderHistory[]
+  returns           ReturnCase[]
+  financialSnapshots FinancialSnapshot[]
+  financialEntries  FinancialEntry[]
+  @@unique([shopId, orderSn])
+  @@index([shopId, sourceCreatedAt])
+  @@index([shopId, status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                    String   @id @default(cuid())
+  orderId               String
+  order                 Order    @relation(fields: [orderId], references: [id])
+  sourceLineKey         String
+  variantId             String
+  variant               ProductVariant @relation(fields: [variantId], references: [id])
+  name                  String
+  sku                   String?
+  quantity              Int
+  originalUnitPrice     Decimal  @db.Decimal(20, 4)
+  paidUnitPrice         Decimal  @db.Decimal(20, 4)
+  costSnapshot          Decimal? @db.Decimal(20, 4)
+  costVersionId         String?
+  costQuality           String   @default("MISSING")
+  @@unique([orderId, sourceLineKey])
+  @@map("order_items")
+}
+
+model OrderHistory {
+  id             String   @id @default(cuid())
+  orderId        String
+  order          Order    @relation(fields: [orderId], references: [id])
+  previousStatus String?
+  status         String
+  sourceUpdatedAt DateTime @db.Timestamptz(3)
+  observedAt     DateTime @default(now()) @db.Timestamptz(3)
+  @@index([orderId, observedAt])
+  @@map("order_history")
+}
+
+model ReturnCase {
+  id              String    @id @default(cuid())
+  shopId          String
+  shop            Shop      @relation(fields: [shopId], references: [id])
+  orderId         String
+  order           Order     @relation(fields: [orderId], references: [id])
+  returnSn        String
+  status          String
+  reportedAmount  Decimal?  @db.Decimal(20, 4)
+  confirmedRefund Decimal?  @db.Decimal(20, 4)
+  sourceUpdatedAt DateTime  @db.Timestamptz(3)
+  observedAt      DateTime  @default(now()) @db.Timestamptz(3)
+  @@unique([shopId, returnSn])
+  @@index([shopId, status])
+  @@map("return_cases")
+}
+
+model FinancialSnapshot {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  source    String
+  sourceKey String
+  hash      String
+  revision  Int
+  amounts   Json
+  observedAt DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([orderId, source, revision])
+  @@map("financial_snapshots")
+}
+
+model FinancialEntry {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id])
+  source      String
+  dedupeKey   String
+  component   String
+  amount      Decimal  @db.Decimal(20, 4)
+  currency    String   @default("IDR")
+  effectiveAt DateTime @db.Timestamptz(3)
+  observedAt  DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([orderId, source, dedupeKey])
+  @@map("financial_entries")
+}
+
+model SyncState {
+  id                String    @id @default(cuid())
+  shopId            String
+  shop              Shop      @relation(fields: [shopId], references: [id])
+  resource          String
+  checkpoint        DateTime? @db.Timestamptz(3)
+  coverageFrom      DateTime? @db.Timestamptz(3)
+  lastSuccessAt     DateTime? @db.Timestamptz(3)
+  lastErrorCode     String?
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(3)
+  @@unique([shopId, resource])
+  @@map("sync_states")
+}
+
+model SyncRun {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id])
+  jobId       String?   @unique
+  reason      String
+  status      String    @default("QUEUED")
+  generation  Int
+  processed   Int       @default(0)
+  errorCode   String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  startedAt   DateTime? @db.Timestamptz(3)
+  finishedAt  DateTime? @db.Timestamptz(3)
+  @@index([shopId, status])
+  @@map("sync_runs")
+}

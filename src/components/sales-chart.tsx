@@ -1,0 +1,6 @@
+"use client";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+
+export function SalesChart({ data }: { data: { date: string; sales: number }[] }) {
+  return <div className="chart" role="img" aria-label="Completed merchandise sales by day"><ResponsiveContainer width="100%" height={250}><AreaChart data={data} margin={{ left: 0, right: 8, top: 12, bottom: 0 }}><defs><linearGradient id="sales-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#127a68" stopOpacity={0.2}/><stop offset="100%" stopColor="#127a68" stopOpacity={0}/></linearGradient></defs><CartesianGrid vertical={false} stroke="#edf0ee"/><XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#88938f", fontSize: 11 }} minTickGap={28}/><YAxis axisLine={false} tickLine={false} tick={{ fill: "#88938f", fontSize: 11 }} width={55} tickFormatter={value => `${Number(value) / 1000}k`}/><Tooltip formatter={value => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(Number(value))} contentStyle={{ borderRadius: 12, borderColor: "#e4e9e6", fontSize: 12 }}/><Area dataKey="sales" name="Sales" type="monotone" stroke="#127a68" strokeWidth={2.6} fill="url(#sales-fill)"/></AreaChart></ResponsiveContainer></div>;
+}

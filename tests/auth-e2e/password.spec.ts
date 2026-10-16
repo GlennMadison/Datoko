@@ -1,0 +1,47 @@
+import { test, expect } from "@playwright/test";
+import { Pool } from "pg";
+
+const email = process.env.AUTH_E2E_OWNER_EMAIL!;
+const password = "browser-owner-password-2026";
+const databaseUrl = process.env.TEST_DATABASE_URL;
+if (!databaseUrl || !new URL(databaseUrl).pathname.toLowerCase().includes("test")) throw new Error("Use a dedicated test database.");
+const pool = new Pool({ connectionString: databaseUrl });
+test.afterEach(async () => { await pool.query('DELETE FROM users WHERE email = $1', [email]); });
+test.afterAll(async () => { await pool.end(); });
+
+test("owner signup, login, validation, and logout work without Google", async ({ page }, testInfo) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/overview");
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: /Google/ })).toHaveCount(0);
+  await page.getByRole("link", { name: "Create your account" }).click();
+  await expect(page.getByRole("heading", { name: "Create your account." })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.getByLabel("Name", { exact: true }).fill("Browser owner");
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByLabel("Confirm password").fill("different-password-2026");
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("form", { name: "Create account" }).getByRole("alert")).toHaveText("The passwords do not match.");
+  await page.screenshot({ path: testInfo.outputPath("signup.png"), fullPage: true });
+  await page.getByLabel("Confirm password").fill(password);
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page.getByRole("heading", { name: "Your business, at a glance." })).toBeVisible();
+  await page.getByRole("button", { name: "Sign out", exact: true }).filter({ visible: true }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goto("/overview");
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill("incorrect-password-2026");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("form", { name: "Sign in" }).getByRole("alert")).toHaveText("The email or password is incorrect.");
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/overview$/);
+  await page.goto("/settings/integrations");
+  await expect(page.getByText("Owner sign-in", { exact: true })).toBeVisible();
+  expect(errors).toEqual([]);
+});
