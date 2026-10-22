@@ -16,7 +16,7 @@ function failureCode(error: unknown): string {
   inspect(error, 0);
   const message = details.join(" ");
   // Return fixed categories only; driver messages can contain private details.
-  if (/LOGIN_NOT_CONFIGURED|DATABASE_NOT_CONFIGURED|AUTH_SECRET_TOO_SHORT|HTTPS_REQUIRED/.test(message)) return "APP_CONFIGURATION";
+  if (/LOGIN_NOT_CONFIGURED|DATABASE_NOT_CONFIGURED|INVALID_DATABASE_CERTIFICATE|AUTH_SECRET_TOO_SHORT|HTTPS_REQUIRED/.test(message)) return "APP_CONFIGURATION";
   if (/unsupported.*startup|startup.*parameter/i.test(message)) return "DATABASE_STARTUP_PARAMETER";
   if (/tenant or user not found/i.test(message)) return "DATABASE_POOLER_TENANT";
   if (/password authentication|authentication failed|SCRAM|SASL/i.test(message)) return "DATABASE_AUTHENTICATION";

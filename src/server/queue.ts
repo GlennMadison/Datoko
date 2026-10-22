@@ -1,13 +1,13 @@
 import { PgBoss, fromPrisma } from "pg-boss";
 import type { Prisma } from "../generated/prisma/client.ts";
 import { AppError } from "../core/errors.ts";
+import { databaseConnectionOptions } from "./database-connection.ts";
 
 export type SyncJob = { runId: string; shopId: string; generation: number };
 let starting: Promise<PgBoss> | undefined;
 export async function getQueue(): Promise<PgBoss> {
   if (!starting) starting = (async () => {
-    if (!process.env.DATABASE_URL) throw new AppError("DATABASE_NOT_CONFIGURED", 503);
-    const boss = new PgBoss({ connectionString: process.env.DATABASE_URL });
+    const boss = new PgBoss(databaseConnectionOptions());
     boss.on("error", () => console.error(JSON.stringify({ event: "queue_error" })));
     await boss.start();
     await boss.createQueue("datoko.sync", { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 1800 });

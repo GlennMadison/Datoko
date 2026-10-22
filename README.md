@@ -158,6 +158,10 @@ Browser tests use a fresh local server on port 3100; owner-authenticated browser
 
 ## Deployment
 
+For Vercel with Supabase, use `DATOKO_MODE=live` and `SHOPEE_ENV=sandbox` to test against Shopee's sandbox with database-backed records. Set the hosted HTTPS origin in `APP_BASE_URL`, `BETTER_AUTH_URL`, and `SHOPEE_REDIRECT_URI`. Use the Supabase session pooler for the current queue and advisory-lock implementation, and supply the public root-certificate PEM as `DATABASE_SSL_CA` from Supabase Database > Settings. The web and queue clients validate the certificate and hostname. `/api/health` checks access to an application table in live mode and returns 503 when the database is unavailable.
+
+The persistent worker must run separately; deploying the Next.js website and Supabase database does not start `npm run worker:production`.
+
 Deploy the same repository as a web service, a persistent worker service, and PostgreSQL. Railway commands:
 
 - Build: npm run build

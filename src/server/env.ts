@@ -8,7 +8,7 @@ const schema = z.object({
   BUSINESS_TIMEZONE: z.string().default("Asia/Jakarta"),
   AUTH_METHOD: z.enum(["email-password", "google"]).default("email-password"),
   EMAIL_SIGNUP_ENABLED: z.enum(["true", "false"]).default("true"),
-  DATABASE_URL: z.string().optional(), BETTER_AUTH_SECRET: z.string().optional(),
+  DATABASE_URL: z.string().optional(), DATABASE_SSL_CA: z.string().optional(), BETTER_AUTH_SECRET: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(), GOOGLE_CLIENT_SECRET: z.string().optional(),
   OWNER_EMAIL: z.string().optional(), OWNER_GOOGLE_SUB: z.string().optional(), TOKEN_ENCRYPTION_KEY: z.string().optional(),
   SHOPEE_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
