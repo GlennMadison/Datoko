@@ -17,6 +17,10 @@ Implemented:
 - Updated-order polling, paginated detail reads, window checkpoints, bounded retries, and manual sync deduplication.
 - Immutable checkout/cost snapshots; new cost versions apply to future sales.
 - Exact decimal financial-delta logic and dependency-free tests for the late-refund example.
+- Advertisement comparison with exact decimal ROAS, private normalized report imports, item-level adjustments, revision history, and explicit source-coverage checks. See [advertising documentation](docs/ADVERTISEMENT.md).
+- Shared automatic WIB date controls and hourly/daily/weekly/monthly charts across Overview, Orders, Products, Returns, and Advertisement.
+
+The Advertisement implementation and current verification results are recorded in [ADVERTISEMENT_TEST_REPORT.md](docs/ADVERTISEMENT_TEST_REPORT.md).
 
 Not enabled yet:
 
@@ -37,7 +41,7 @@ npm run dev
 
 Open http://localhost:3000. Demo mode works without login/Shopee credentials. The development server binds only to localhost.
 
-The lockfile records the successfully installed dependency versions. Development and build use Webpack, with two build workers, following Windows junction and parallel prerender permission failures observed during testing. Before live use, start PostgreSQL (optionally `docker compose up -d`), configure its URL, and apply migrations with `npm run db:deploy`.
+The lockfile records the successfully installed dependency versions. Development and build use Webpack. Windows builds serialize prerendering and disable the separate Webpack compilation worker following filesystem permission failures observed during testing. Before live use, start PostgreSQL (optionally `docker compose up -d`), configure its URL, and apply migrations with `npm run db:deploy`.
 
 Repeat the local checks:
 
@@ -125,7 +129,7 @@ Tokens refresh under a per-shop lock and save the access/refresh pair together. 
 
 ## Tests
 
-Core tests need only Node:
+Core tests need Node and the installed project dependencies:
 
 ```powershell
 npm test
@@ -148,7 +152,9 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Browser tests use port 3100 and can reuse an existing local demo server; CI starts a fresh server. These suites do not prove real Shopee redirect compatibility. See docs/SANDBOX_TESTING.md for the console verification cycle.
+Browser tests use a fresh local server on port 3100; owner-authenticated browser tests use port 3101 and the dedicated TEST_DATABASE_URL. The test runner closes its server through IPC to avoid Windows process-tree shutdown problems. These suites do not prove real Shopee redirect compatibility. See docs/SANDBOX_TESTING.md for the console verification cycle.
+
+`npm run test:auth` tests the production build over local HTTPS, including secure session cookies. It requires OpenSSL to generate an ephemeral localhost certificate (Git for Windows supplies a native copy); use `DATOKO_TEST_OPENSSL` to select another executable. Certificate verification is relaxed only inside this isolated browser test configuration. The temporary key and certificate are removed after the run.
 
 ## Deployment
 

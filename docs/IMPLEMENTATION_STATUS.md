@@ -2,6 +2,8 @@
 
 The repository contains the first implementation slice of the saved plan. Datoko is the application name; Solidum remains the example business in the original planning document. See TEST_REPORT.md for current verification details.
 
+Update, 16 October 2026: the Advertisement tab, exact attributed ROAS engine, private report import and audit history, and shared automatic date/interval controls are implemented. The additive advertising migration is applied. The latest run passes 60 core tests, 36 PostgreSQL checks, and 24 browser checks; dependency auditing reports zero vulnerabilities after the Prisma 7.10.1 patch. See [ADVERTISEMENT_TEST_REPORT.md](ADVERTISEMENT_TEST_REPORT.md) for current results and source limitations. The verification numbers below describe the earlier baseline.
+
 ## Source completed
 
 - Next.js/TypeScript application, responsive dashboard pages, read-only demo data, and private owner access.
@@ -28,6 +30,6 @@ The repository contains the first implementation slice of the saved plan. Datoko
 4. Configure email/password owner login (or optional Google login) and sandbox Shopee credentials privately.
 5. Verify the callback query round trip and one real order import, including rejection/failure paths.
 6. Implement verified return/settlement adapters, financial posting, nightly reconciliation, older-history backfill, and report pagination.
-7. Review four high-severity npm audit findings in Prisma CLI transitive dependencies, then complete production migration, backup/restore, deployment, and monitoring checks.
+7. Complete production backup/restore, deployment, and monitoring checks. The earlier four Prisma dependency findings were resolved by the 7.10.1 update; the current audit is clean.
 
 The staged Git repository has the requested origin URL but no fetched upstream history, commits, or pushes. Do not force-push it over the remote repository.

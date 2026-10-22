@@ -84,6 +84,7 @@ model Shop {
   returns        ReturnCase[]
   syncStates     SyncState[]
   syncRuns       SyncRun[]
+  adDatasets     AdDataset[]
   @@unique([environment, sourceShopId])
   @@index([ownerId])
   @@map("shops")
@@ -286,4 +287,72 @@ model SyncRun {
   finishedAt  DateTime? @db.Timestamptz(3)
   @@index([shopId, status])
   @@map("sync_runs")
+}
+
+model AdDataset {
+  id        String @id @default(cuid())
+  shopId    String
+  shop      Shop @relation(fields: [shopId], references: [id])
+  sourceKey String
+  name      String
+  basis     String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  reports   AdReportBucket[]
+  @@unique([shopId, sourceKey])
+  @@map("ad_datasets")
+}
+
+model AdReportBucket {
+  id                    String @id @default(cuid())
+  datasetId             String
+  dataset               AdDataset @relation(fields: [datasetId], references: [id])
+  campaignKey           String
+  campaignName          String
+  grain                 String
+  startAt               DateTime @db.Timestamptz(3)
+  endAt                 DateTime @db.Timestamptz(3)
+  spend                 Decimal @db.Decimal(20, 4)
+  revenue               Decimal @db.Decimal(20, 4)
+  sourceAsOf            DateTime @db.Timestamptz(3)
+  attributionComplete   Boolean @default(false)
+  outcomesComplete      Boolean @default(false)
+  sourceDigest          String
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @db.Timestamptz(3)
+  allocations           AdAttributionAllocation[]
+  revisions             AdReportRevision[]
+  @@unique([datasetId, campaignKey, grain, startAt])
+  @@index([datasetId, startAt])
+  @@map("ad_report_buckets")
+}
+
+model AdAttributionAllocation {
+  id                 String @id @default(cuid())
+  reportId           String
+  report             AdReportBucket @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  sourceKey          String
+  orderSn            String
+  sourceLineKey      String
+  amount             Decimal @db.Decimal(20, 4)
+  disposition        String
+  confirmedRefund    Decimal @db.Decimal(20, 4)
+  provisional        Boolean
+  returnReferences   String[]
+  @@unique([reportId, sourceKey])
+  @@index([orderSn, sourceLineKey])
+  @@map("ad_attribution_allocations")
+}
+
+model AdReportRevision {
+  id            String @id @default(cuid())
+  reportId      String
+  report        AdReportBucket @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  digest        String
+  sourceAsOf    DateTime @db.Timestamptz(3)
+  importedBy    String
+  payload       Json
+  createdAt     DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([reportId, digest])
+  @@map("ad_report_revisions")
 }

@@ -2,7 +2,8 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   poweredByHeader: false,
-  experimental: { cpus: 2 },
+  // Serialize Windows build writes to avoid filesystem permission races.
+  experimental: { cpus: process.platform === "win32" ? 1 : 2, ...(process.platform === "win32" ? { webpackBuildWorker: false, staticGenerationMaxConcurrency: 1 } : {}) },
   serverExternalPackages: ["pg", "pg-boss"],
   async headers() {
     return [{ source: "/:path*", headers: [

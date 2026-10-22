@@ -7,28 +7,16 @@ process.env.AUTH_E2E_OWNER_EMAIL ??= `auth-browser-${randomUUID()}@example.test`
 process.env.DATABASE_URL = databaseUrl;
 export default defineConfig({
   testDir: "./tests/auth-e2e",
+  outputDir: "./test-results/auth",
   fullyParallel: false,
   workers: 1,
   retries: 0,
   globalTimeout: 180_000,
   timeout: 60_000,
   reporter: [["list"], ["html", { outputFolder: "playwright-report/auth", open: "never" }]],
-  use: { baseURL: "http://127.0.0.1:3101", reducedMotion: "reduce", trace: "retain-on-failure", screenshot: "only-on-failure" },
+  use: { baseURL: "https://127.0.0.1:3101", ignoreHTTPSErrors: true, reducedMotion: "reduce", trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "mobile", use: { ...devices["Pixel 7"] } },
   ],
-  webServer: {
-    command: "node node_modules/next/dist/bin/next dev --webpack --hostname 127.0.0.1 --port 3101",
-    url: "http://127.0.0.1:3101/api/health",
-    reuseExistingServer: process.env.AUTH_E2E_REUSE_SERVER === "true",
-    timeout: 90_000,
-    env: {
-      DATABASE_URL: databaseUrl, DATOKO_MODE: "live", AUTH_METHOD: "email-password", EMAIL_SIGNUP_ENABLED: "true",
-      OWNER_EMAIL: process.env.AUTH_E2E_OWNER_EMAIL,
-      APP_BASE_URL: "http://127.0.0.1:3101", BETTER_AUTH_URL: "http://127.0.0.1:3101",
-      BETTER_AUTH_SECRET: "auth-browser-fixture-secret-more-than-32-characters",
-      GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "", OWNER_GOOGLE_SUB: "",
-    },
-  },
 });

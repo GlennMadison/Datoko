@@ -1,0 +1,49 @@
+import { test, expect } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { Pool } from "pg";
+
+const databaseUrl = process.env.TEST_DATABASE_URL;
+if (!databaseUrl || !new URL(databaseUrl).pathname.toLowerCase().includes("test")) throw new Error("Use a dedicated test database.");
+test("owner imports attributed sales, sees correct ROAS, and late cancellation restates it", async ({ page, request }) => {
+  const pool = new Pool({ connectionString: databaseUrl });
+  const email = process.env.AUTH_E2E_OWNER_EMAIL!, shopId = randomUUID(), variantId = randomUUID(), orderId = randomUUID(), sourceShopId = String(Date.now());
+  try {
+    for (const path of ["report", "template", "order-items"]) expect((await request.get(`/api/advertisement/${path}`)).status()).toBe(401);
+    const signedUp = await page.request.post("/api/auth/sign-up/email", { headers: { Origin: "https://127.0.0.1:3101" }, data: { email, password: "ads-browser-password-2026", name: "Ads browser owner" } });
+    expect(signedUp.ok()).toBe(true);
+    const owner = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
+    await pool.query('INSERT INTO shops (id, "ownerId", "sourceShopId", environment, name, "updatedAt") VALUES ($1,$2,$3,\'sandbox\',\'Browser shop\',now())', [shopId, owner.id, sourceShopId]);
+    await pool.query('INSERT INTO product_variants (id,"shopId","sourceItemId","sourceModelId",name,"updatedAt") VALUES ($1,$2,\'1\',\'0\',\'Browser product\',now())', [variantId, shopId]);
+    await pool.query('INSERT INTO orders (id,"shopId","orderSn",status,"totalAmount","merchandiseAmount","sourceCreatedAt","sourceUpdatedAt") VALUES ($1,$2,\'ADS-BROWSER-ORDER\',\'COMPLETED\',1000000,1000000,\'2026-10-01T08:00:00Z\',\'2026-10-01T09:00:00Z\')', [orderId, shopId]);
+    await pool.query('INSERT INTO order_items (id,"orderId","sourceLineKey","variantId",name,quantity,"originalUnitPrice","paidUnitPrice") VALUES ($1,$2,\'line:1\',$3,\'Browser product\',1,1000000,1000000)', [randomUUID(), orderId, variantId]);
+    await page.goto("/advertisement?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
+    await expect(page.getByTestId("real-roas")).toHaveText("Unavailable");
+    const references = await page.request.get("/api/advertisement/order-items?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
+    expect(references.status()).toBe(200);
+    expect(references.headers()["cache-control"]).toContain("no-store");
+    expect((await references.json()).items).toEqual([expect.objectContaining({ orderSn: "ADS-BROWSER-ORDER", lineKey: "line:1", merchandiseValue: "1000000.0000" })]);
+    const report = { version: 1, sourceShopId, environment: "sandbox", datasetKey: "browser-source", datasetName: "Browser source report", basis: "PLACED_TOTAL", reports: [{ campaignKey: "shop", campaignName: "Shop total", grain: "DAY", start: "2026-10-01T00:00:00+07:00", end: "2026-10-02T00:00:00+07:00", sourceAsOf: "2026-10-02T10:00:00Z", spend: "100000", revenue: "1000000", attributionComplete: true, outcomesComplete: true, allocations: [{ key: "conversion-1", orderSn: "ADS-BROWSER-ORDER", lineKey: "line:1", amount: "1000000", disposition: "RETAINED", confirmedRefund: "300000", provisional: false, returnReferences: [] }] }] };
+    await page.getByLabel("Normalized ad report (.json)").setInputFiles({ name: "ads.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(report)) });
+    await page.getByRole("button", { name: "Import report", exact: true }).click();
+    await expect(page.getByTestId("original-roas")).toHaveText("10.00x");
+    await expect(page.getByTestId("real-roas")).toHaveText("7.00x");
+    await expect(page.getByRole("link", { name: "ADS-BROWSER-ORDER", exact: true })).toBeVisible();
+    const csrf = await page.request.post("/api/advertisement/import", { headers: { Origin: "https://outsider.example.test" }, data: report });
+    expect(csrf.status()).toBe(403);
+    await pool.query('UPDATE orders SET status=\'CANCELLED\',"sourceUpdatedAt"=\'2026-10-03T10:00:00Z\' WHERE id=$1', [orderId]);
+    await page.reload();
+    await expect(page.getByTestId("original-roas")).toHaveText("10.00x");
+    await expect(page.getByTestId("real-roas")).toHaveText("0.00x");
+    const data = await page.request.get("/api/advertisement/report?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
+    expect((await data.json()).summary.excludedRevenue).toBe("1000000.0000");
+  } finally {
+    await pool.query('DELETE FROM ad_report_buckets WHERE "datasetId" IN (SELECT id FROM ad_datasets WHERE "shopId"=$1)', [shopId]);
+    await pool.query('DELETE FROM ad_datasets WHERE "shopId"=$1', [shopId]);
+    await pool.query('DELETE FROM order_items WHERE "orderId"=$1', [orderId]);
+    await pool.query('DELETE FROM orders WHERE id=$1', [orderId]);
+    await pool.query('DELETE FROM product_variants WHERE id=$1', [variantId]);
+    await pool.query('DELETE FROM shops WHERE id=$1', [shopId]);
+    await pool.query('DELETE FROM users WHERE email=$1', [email]);
+    await pool.end();
+  }
+});

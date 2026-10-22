@@ -1,5 +1,6 @@
 export function Icon({ name, size = 19 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
+    advertisement: <><path d="M3 10v4h4l10 5V5L7 10H3Z"/><path d="m7 14 2 7h3l-2-6M20 9v6"/></>,
     overview: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
     orders: <><path d="M7 3h10l3 4v14H4V7l3-4Z"/><path d="M4 7h16M9 12h6M9 16h4"/></>,
     products: <><path d="m12 3 9 5-9 5-9-5 9-5ZM3 8v9l9 5 9-5V8M12 13v9M7 5.8l9 5"/></>,

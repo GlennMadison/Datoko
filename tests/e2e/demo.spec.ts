@@ -8,15 +8,23 @@ test("dashboard pages render and navigate without browser errors", async ({ page
   await expect(page.getByRole("heading", { name: "Your business, at a glance." })).toBeVisible();
   await expect(page.getByText("No Shopee shop is connected.", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sync now" })).toBeDisabled();
-  await page.getByLabel("Date range").selectOption("7");
-  await page.getByRole("button", { name: "Apply", exact: true }).click();
-  await expect(page).toHaveURL(/days=7/);
-  await expect(page.getByLabel("Date range")).toHaveValue("7");
+  await page.getByRole("button", { name: /^Date range:/ }).click();
+  await page.getByRole("dialog", { name: "Choose reporting dates" }).getByRole("button", { name: "Last 7 days", exact: true }).click();
+  await expect(page).toHaveURL(/preset=last7/);
+  await expect(page.getByRole("button", { name: "Date range: Last 7 days", exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Reporting period" }).getByLabel("Graph interval")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Sales chart" }).getByLabel("Graph interval")).toHaveCount(0);
+  const metrics = await page.locator(".metrics-grid").boundingBox();
+  const toolbar = await page.getByRole("region", { name: "Reporting period" }).boundingBox();
+  const chart = await page.getByRole("region", { name: "Sales chart" }).boundingBox();
+  expect(metrics!.y + metrics!.height).toBeLessThanOrEqual(toolbar!.y);
+  expect(toolbar!.y + toolbar!.height).toBeLessThanOrEqual(chart!.y);
   await page.screenshot({ path: testInfo.outputPath("overview.png"), fullPage: true });
   for (const [route, heading] of [
     ["/orders", "Every order. Full context."],
     ["/products", "Better inputs. Clearer margins."],
     ["/returns", "Returns stay part of the story."],
+    ["/advertisement", "Advertisement."],
     ["/settings/integrations", "Your shop connection."],
     ["/settings/sync", "Know what's up to date."],
   ]) {
@@ -24,6 +32,10 @@ test("dashboard pages render and navigate without browser errors", async ({ page
     expect(response?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    if (["/orders", "/products", "/returns", "/advertisement"].includes(route)) {
+      await expect(page.getByRole("region", { name: "Reporting period" }).getByLabel("Graph interval")).toBeVisible();
+      await expect(page.getByRole("region", { name: /chart$/ }).getByLabel("Graph interval")).toHaveCount(0);
+    }
   }
   expect(errors).toEqual([]);
 });
@@ -81,7 +93,7 @@ test("server rejects cross-site and demo mutations", async ({ request }) => {
     expect(crossSite.status()).toBe(403);
     expect(await crossSite.json()).toMatchObject({ error: "INVALID_ORIGIN" });
   }
-  for (const path of ["/api/integrations/shopee/connect", "/api/integrations/shopee/disconnect", "/api/shops/demo/sync", "/api/variants/sample-1/costs"]) {
+  for (const path of ["/api/integrations/shopee/connect", "/api/integrations/shopee/disconnect", "/api/shops/demo/sync", "/api/variants/sample-1/costs", "/api/advertisement/import"]) {
     const response = await request.post(path, { headers: { Origin: "http://127.0.0.1:3100" }, form: { shopId: "123", amount: "100" }, maxRedirects: 0 });
     expect(response.status()).toBe(409);
     expect(await response.json()).toMatchObject({ error: "DEMO_READ_ONLY" });

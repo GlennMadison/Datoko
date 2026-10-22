@@ -6,6 +6,7 @@ import { requireOwner } from "@/server/auth";
 import { Navigation } from "@/components/navigation";
 import { Icon } from "@/components/icons";
 import { SignOut } from "@/components/auth-actions";
+import { ReportNavigationProvider } from "@/components/report-navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Link href="/settings/integrations">Set up connection <Icon name="arrow" size={14}/></Link>
           </div>
         )}
-        <main className="main-content">{children}</main>
+        <main className="main-content"><ReportNavigationProvider>{children}</ReportNavigationProvider></main>
         <footer className="footer">
           <span>datoko. <span className="muted-dot">·</span> A clearer view of your business</span>
           <span>All times in WIB</span>

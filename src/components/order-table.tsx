@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ReportLink as Link } from "./report-link";
 import type { OrderRow } from "@/server/dashboard";
 import { rupiah, dateLabel } from "@/lib/format";
 import { Status, Badge, EmptyState } from "./ui";
