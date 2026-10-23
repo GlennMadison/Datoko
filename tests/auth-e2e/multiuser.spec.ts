@@ -30,8 +30,8 @@ test("separate accounts keep shop data and mutations private", async ({ page, br
     }
     for (let index = 0; index < 2; index++) {
       await pages[index].goto("/orders");
-      await expect(pages[index].getByRole("link", { name: sns[index], exact: true })).toBeVisible();
-      await expect(pages[index].getByRole("link", { name: sns[1 - index], exact: true })).toHaveCount(0);
+      await expect(pages[index].getByRole("link", { name: products[index], exact: true })).toBeVisible();
+      await expect(pages[index].getByRole("link", { name: products[1 - index], exact: true })).toHaveCount(0);
       await expect(pages[index].locator(".owner strong")).toHaveText(names[index]);
     }
     const headers = { Origin: baseURL! };
@@ -46,7 +46,7 @@ test("separate accounts keep shop data and mutations private", async ({ page, br
     const foreignShop = (await pool.query('SELECT "sourceShopId" FROM shops WHERE id=$1', [shopIds[1]])).rows[0];
     expect((await page.request.post("/api/advertisement/import", { headers, data: { ...template, sourceShopId: foreignShop.sourceShopId } })).status()).toBe(404);
     await page.goto(`/orders/${sns[1]}`);
-    await expect(page.getByText("This page could not be found.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "That record isn't here.", exact: true })).toBeVisible();
     await expect(page.getByText(products[1], { exact: true })).toHaveCount(0);
     expect((await pool.query('SELECT count(*)::int AS count FROM sku_cost_versions WHERE "variantId"=$1', [variantIds[1]])).rows[0].count).toBe(0);
     expect((await page.request.post("/api/auth/sign-out", { headers, data: {} })).status()).toBe(200);
@@ -54,7 +54,7 @@ test("separate accounts keep shop data and mutations private", async ({ page, br
     expect((await otherPage.request.get("/api/advertisement/template")).status()).toBe(200);
     expect((await page.request.post("/api/auth/sign-in/email", { headers, data: { email: emails[0], password } })).status()).toBe(200);
     await page.goto("/orders");
-    await expect(page.getByRole("link", { name: sns[0], exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: products[0], exact: true })).toBeVisible();
   } finally {
     await otherContext.close();
     await pool.query('DELETE FROM sync_runs WHERE "shopId"=ANY($1::text[])', [shopIds]);
