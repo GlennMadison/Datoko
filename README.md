@@ -162,7 +162,9 @@ For Vercel with Supabase, use `DATOKO_MODE=live` and `SHOPEE_ENV=sandbox` to tes
 
 For a restricted database login, provision a private `pgboss` schema owned by that login during database setup. Queue startup reuses the existing schema and initializes its tables without requiring database-wide schema creation privileges. Prisma migrations cover the application tables; pg-boss maintains its own queue schema and version.
 
-The persistent worker must run separately; deploying the Next.js website and Supabase database does not start `npm run worker:production`.
+For hosted sync on Vercel and Supabase, set a random `SYNC_WORKER_SECRET` in Vercel production and the matching `datoko_sync_worker_secret` in Supabase Vault, then run [docs/worker-schedule.sql](docs/worker-schedule.sql) as the database administrator. Supabase Cron invokes the protected `POST /api/internal/sync` endpoint every minute. It refreshes tokens, queues shops when their configured sync interval is due, and processes one queued job per invocation. Overlapping invocations use a database lock. Long imports retain their remaining windows and page cursor in the durable queue; only completed windows advance their checkpoints. The endpoint returns counts and controlled error codes, never tokens or order records.
+
+Alternatively, run the persistent worker separately with `npm run worker:production`. Deploying the Next.js website alone does not start this process. Both worker modes share dispatch, token refresh, checkpoints, and idempotent order imports.
 
 Deploy the same repository as a web service, a persistent worker service, and PostgreSQL. Railway commands:
 

@@ -28,11 +28,20 @@ export function syncWindows(input: { checkpoint: Date | null; coverageFrom: Date
 export interface WindowSource<T> { page: (window: SyncWindow, cursor: string | null) => Promise<{ records: T[]; nextCursor: string | null }> }
 export interface WindowSink<T> { save: (record: T) => Promise<void>; commitCheckpoint: (through: Date) => Promise<void> }
 
-export async function importWindow<T>(window: SyncWindow, source: WindowSource<T>, sink: WindowSink<T>): Promise<number> {
-  let cursor: string | null = null;
-  let count = 0;
-  const seen = new Set<string>();
+export type WindowProgress = { cursor: string | null; count: number; seenCursors: string[] };
+export class SyncWindowPaused extends Error {
+  readonly progress: WindowProgress;
+  constructor(progress: WindowProgress) { super("SYNC_WINDOW_PAUSED"); this.progress = progress; }
+}
+
+export async function importWindow<T>(window: SyncWindow, source: WindowSource<T>, sink: WindowSink<T>, controls: { resume?: WindowProgress; shouldPause?: () => boolean } = {}): Promise<number> {
+  let cursor = controls.resume?.cursor ?? null;
+  let count = controls.resume?.count ?? 0;
+  const seen = new Set(controls.resume?.seenCursors ?? []);
   do {
+    // Pause only between complete pages. Saved records can be replayed safely,
+    // and the window checkpoint advances only after its last page is saved.
+    if (controls.shouldPause?.()) throw new SyncWindowPaused({ cursor, count, seenCursors: [...seen] });
     const result = await source.page(window, cursor);
     for (const record of result.records) { await sink.save(record); count++; }
     cursor = result.nextCursor;

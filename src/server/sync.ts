@@ -4,8 +4,8 @@ import { accessForShop, withShopLock } from "./connections.ts";
 import { ShopeeClient } from "./shopee-client.ts";
 import { normalizeOrder, type NormalizedOrder } from "../core/orders.ts";
 import { AppError, publicErrorCode } from "../core/errors.ts";
-import { syncWindows, importWindow, initialCoverageFrom } from "../core/sync.ts";
-import type { SyncJob } from "./queue.ts";
+import { syncWindows, importWindow, initialCoverageFrom, SyncWindowPaused } from "../core/sync.ts";
+import type { SyncJob, SyncContinuation } from "./queue.ts";
 
 async function saveOrder(shopId: string, generation: number, source: NormalizedOrder) {
   const db = getDb();
@@ -29,20 +29,25 @@ async function saveOrder(shopId: string, generation: number, source: NormalizedO
   });
 }
 
-export async function runShopSync(job: SyncJob): Promise<void> {
-  await withShopLock(`order-sync:${job.shopId}`, async () => {
+export async function runShopSync(job: SyncJob, controls: { shouldPause?: () => boolean } = {}): Promise<SyncContinuation | undefined> {
+  return withShopLock(`order-sync:${job.shopId}`, async () => {
     const db = getDb();
     const config = getConfig();
     const client = new ShopeeClient(partnerConfig());
     const run = await db.syncRun.findUniqueOrThrow({ where: { id: job.runId } });
+    if (run.shopId !== job.shopId || run.generation !== job.generation) throw new AppError("INVALID_SYNC_JOB", 409);
     if (["SUCCEEDED", "CANCELLED"].includes(run.status)) return;
-    await db.syncRun.update({ where: { id: job.runId }, data: { status: "RUNNING", startedAt: new Date(), errorCode: null } });
-    let processed = 0;
+    await db.syncRun.update({ where: { id: job.runId }, data: { status: "RUNNING", startedAt: run.startedAt ?? new Date(), finishedAt: null, errorCode: null } });
+    let processed = run.processed;
     try {
       const now = new Date();
       const coverageFrom = initialCoverageFrom(now, config.INITIAL_IMPORT_DAYS, config.SHOPEE_HISTORY_DAYS);
       const state = await db.syncState.upsert({ where: { shopId_resource: { shopId: job.shopId, resource: "orders" } }, create: { shopId: job.shopId, resource: "orders", coverageFrom }, update: {} });
-      const windows = syncWindows({ checkpoint: state.checkpoint, coverageFrom: state.coverageFrom ?? coverageFrom, now, maxWindowDays: config.SHOPEE_MAX_WINDOW_DAYS, historyDays: config.SHOPEE_HISTORY_DAYS });
+      const windows = job.continuation
+        ? job.continuation.windows.map(window => ({ from: new Date(window.from), to: new Date(window.to) })).filter(window => !state.checkpoint || window.to > state.checkpoint)
+        : syncWindows({ checkpoint: state.checkpoint, coverageFrom: state.coverageFrom ?? coverageFrom, now, maxWindowDays: config.SHOPEE_MAX_WINDOW_DAYS, historyDays: config.SHOPEE_HISTORY_DAYS });
+      const resume = job.continuation && windows[0]?.from.toISOString() === job.continuation.windows[0]?.from ? job.continuation.progress : undefined;
+      if (resume) processed -= resume.count;
       const read = async <T>(action: (token: string, sourceShopId: string) => Promise<T>): Promise<T> => {
         const access = await accessForShop(job.shopId, job.generation);
         try { return await action(access.accessToken, access.sourceShopId); }
@@ -52,25 +57,32 @@ export async function runShopSync(job: SyncJob): Promise<void> {
           return action(refreshed.accessToken, refreshed.sourceShopId);
         }
       };
-      for (const window of windows) {
-        processed += await importWindow(window, { page: async (range, cursor) => {
-          const page = await read((token, sourceId) => client.orderList(token, sourceId, range.from, range.to, cursor));
-          const records: NormalizedOrder[] = [];
-          for (let offset = 0; offset < page.orderSns.length; offset += 50) {
-            const details = await read((token, sourceId) => client.orderDetails(token, sourceId, page.orderSns.slice(offset, offset + 50)));
-            records.push(...details.map(normalizeOrder));
-          }
-          return { records, nextCursor: page.nextCursor };
-        } }, {
-          save: order => saveOrder(job.shopId, job.generation, order),
-          commitCheckpoint: async through => {
-            await db.$transaction(async tx => {
-              const current = await tx.$queryRaw<{ version: number; status: string }[]>`SELECT version, status FROM shop_connections WHERE "shopId" = ${job.shopId} FOR SHARE`;
-              if (current[0]?.version !== job.generation || current[0]?.status !== "CONNECTED") throw new AppError("CONNECTION_CHANGED", 409);
-              await tx.syncState.update({ where: { id: state.id }, data: { checkpoint: through, lastSuccessAt: new Date(), lastErrorCode: null } });
-            });
-          },
-        });
+      for (const [index, window] of windows.entries()) {
+        if (window.from.getTime() < now.getTime() - config.SHOPEE_HISTORY_DAYS * 86_400_000) throw new AppError("HISTORY_COVERAGE_GAP", 409);
+        try {
+          processed += await importWindow(window, { page: async (range, cursor) => {
+            const page = await read((token, sourceId) => client.orderList(token, sourceId, range.from, range.to, cursor));
+            const records: NormalizedOrder[] = [];
+            for (let offset = 0; offset < page.orderSns.length; offset += 50) {
+              const details = await read((token, sourceId) => client.orderDetails(token, sourceId, page.orderSns.slice(offset, offset + 50)));
+              records.push(...details.map(normalizeOrder));
+            }
+            return { records, nextCursor: page.nextCursor };
+          } }, {
+            save: order => saveOrder(job.shopId, job.generation, order),
+            commitCheckpoint: async through => {
+              await db.$transaction(async tx => {
+                const current = await tx.$queryRaw<{ version: number; status: string }[]>`SELECT version, status FROM shop_connections WHERE "shopId" = ${job.shopId} FOR SHARE`;
+                if (current[0]?.version !== job.generation || current[0]?.status !== "CONNECTED") throw new AppError("CONNECTION_CHANGED", 409);
+                await tx.syncState.update({ where: { id: state.id }, data: { checkpoint: through, lastSuccessAt: new Date(), lastErrorCode: null } });
+              });
+            },
+          }, { resume: index === 0 ? resume : undefined, shouldPause: controls.shouldPause });
+        } catch (error) {
+          if (!(error instanceof SyncWindowPaused)) throw error;
+          await db.syncRun.updateMany({ where: { id: job.runId, status: "RUNNING" }, data: { processed: processed + error.progress.count } });
+          return { windows: windows.slice(index).map(range => ({ from: range.from.toISOString(), to: range.to.toISOString() })), progress: error.progress };
+        }
         await db.syncRun.update({ where: { id: job.runId }, data: { processed } });
       }
       const completed = await db.syncRun.updateMany({ where: { id: job.runId, status: "RUNNING", shop: { connection: { version: job.generation, status: "CONNECTED" } } }, data: { status: "SUCCEEDED", processed, finishedAt: new Date() } });

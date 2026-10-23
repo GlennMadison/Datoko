@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { syncWindows, importWindow, initialCoverageFrom } from "../src/core/sync.ts";
+import { syncWindows, importWindow, initialCoverageFrom, SyncWindowPaused } from "../src/core/sync.ts";
 import { financialDeltas, amountUnits, amountString } from "../src/core/money.ts";
 
 test("a failure on a later page preserves the old checkpoint; replay is safe", async () => {
@@ -68,4 +68,39 @@ test("money arithmetic is exact and rejects unsupported precision", () => {
   assert.equal(amountString(amountUnits("0.1") + amountUnits("0.2")), "0.3000");
   assert.throws(() => amountUnits("0.00001"));
   assert.throws(() => financialDeltas(null, { sales: "110000", refunds: "-1", fees: "0" }));
+});
+
+test("a scheduled batch resumes at the next page without advancing an unfinished checkpoint", async () => {
+  const window = { from: new Date(0), to: new Date(1000) };
+  const requested: (string | null)[] = [];
+  const stored: string[] = [];
+  let checkpoint: Date | undefined;
+  const source = { page: async (_: unknown, cursor: string | null) => {
+    requested.push(cursor);
+    return cursor ? { records: ["B"], nextCursor: null } : { records: ["A"], nextCursor: "page2" };
+  } };
+  const sink = { save: async (value: string) => { stored.push(value); }, commitCheckpoint: async (through: Date) => { checkpoint = through; } };
+  let pause: SyncWindowPaused | undefined;
+  try { await importWindow(window, source, sink, { shouldPause: () => requested.length === 1 }); }
+  catch (error) { assert.ok(error instanceof SyncWindowPaused); pause = error; }
+  assert.ok(pause);
+  assert.equal(checkpoint, undefined);
+  assert.deepEqual(stored, ["A"]);
+  assert.equal(await importWindow(window, source, sink, { resume: pause.progress }), 2);
+  assert.deepEqual(requested, [null, "page2"]);
+  assert.deepEqual(stored, ["A", "B"]);
+  assert.equal(checkpoint, window.to);
+});
+
+test("cursor cycle protection survives scheduled batch continuations", async () => {
+  let checkpoint = false;
+  await assert.rejects(importWindow({ from: new Date(0), to: new Date(1) }, { page: async () => ({ records: [], nextCursor: "page1" }) }, { save: async () => {}, commitCheckpoint: async () => { checkpoint = true; } }, { resume: { cursor: "page2", count: 2, seenCursors: ["page1", "page2"] } }), /REPEATED_SOURCE_CURSOR/);
+  assert.equal(checkpoint, false);
+});
+
+test("an exhausted batch makes no source request and leaves its checkpoint unchanged", async () => {
+  let requested = false, committed = false;
+  await assert.rejects(importWindow({ from: new Date(0), to: new Date(1) }, { page: async () => { requested = true; return { records: [], nextCursor: null }; } }, { save: async () => {}, commitCheckpoint: async () => { committed = true; } }, { shouldPause: () => true }), SyncWindowPaused);
+  assert.equal(requested, false);
+  assert.equal(committed, false);
 });

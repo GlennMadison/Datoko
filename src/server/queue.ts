@@ -3,8 +3,10 @@ import type { Prisma } from "../generated/prisma/client.ts";
 import { AppError } from "../core/errors.ts";
 import { databaseConnectionOptions } from "./database-connection.ts";
 import { getPool } from "./db.ts";
+import type { WindowProgress } from "../core/sync.ts";
 
-export type SyncJob = { runId: string; shopId: string; generation: number };
+export type SyncContinuation = { windows: { from: string; to: string }[]; progress: WindowProgress };
+export type SyncJob = { runId: string; shopId: string; generation: number; continuation?: SyncContinuation };
 let starting: Promise<PgBoss> | undefined;
 export async function getQueue(): Promise<PgBoss> {
   if (!starting) starting = (async () => {
@@ -12,7 +14,7 @@ export async function getQueue(): Promise<PgBoss> {
     // create database schemas. Even CREATE SCHEMA IF NOT EXISTS requires that
     // permission, so skip it when setup has already provisioned the schema.
     const { rows } = await getPool().query<{ exists: boolean }>("SELECT to_regnamespace('pgboss') IS NOT NULL AS exists");
-    const boss = new PgBoss({ ...databaseConnectionOptions(), createSchema: !rows[0]?.exists });
+    const boss = new PgBoss({ ...databaseConnectionOptions(), createSchema: !rows[0]?.exists, max: 2 });
     boss.on("error", () => console.error(JSON.stringify({ event: "queue_error" })));
     await boss.start();
     await boss.createQueue("datoko.sync", { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 1800 });
