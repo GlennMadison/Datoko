@@ -48,15 +48,15 @@ export function PasswordForm({ disabled, signUp = false }: { disabled: boolean; 
       setBusy(false);
     }
   }
-  return <form className="auth-form" method="post" onSubmit={submit} aria-label={signUp ? "Create account" : "Sign in"} aria-busy={busy}>
+  return <form className="auth-form" method="post" onSubmit={submit} aria-label={signUp ? "Create account" : "Sign in"} aria-busy={busy} aria-describedby={error ? "auth-error" : undefined}>
     <fieldset disabled={!ready || disabled || busy}>
       {signUp && <label htmlFor="auth-name">Name<input id="auth-name" name="name" autoComplete="name" required maxLength={100}/></label>}
       <label htmlFor="auth-email">Email<input id="auth-email" name="email" type="email" autoComplete="email" required maxLength={254}/></label>
       <label htmlFor="auth-password">Password<input id="auth-password" name="password" type="password" autoComplete={signUp ? "new-password" : "current-password"} required minLength={signUp ? 12 : 1} maxLength={128} aria-describedby={signUp ? "password-help" : undefined}/></label>
-      {signUp && <><p id="password-help" className="auth-hint">Use 12–128 characters.</p><label htmlFor="auth-confirm">Confirm password<input id="auth-confirm" name="confirmPassword" type="password" autoComplete="new-password" required minLength={12} maxLength={128}/></label></>}
+      {signUp && <><p id="password-help" className="auth-hint">Use 12–128 characters.</p><label htmlFor="auth-confirm">Confirm password<input id="auth-confirm" aria-invalid={error === "The passwords do not match."} name="confirmPassword" type="password" autoComplete="new-password" required minLength={12} maxLength={128}/></label></>}
       <Button type="submit">{busy ? (signUp ? "Creating account…" : "Signing in…") : (signUp ? "Create account" : "Sign in")}</Button>
     </fieldset>
-    {error && <p className="auth-error" role="alert">{error}</p>}
+    {error && <p id="auth-error" className="auth-error" role="alert">{error}</p>}
   </form>;
 }
 

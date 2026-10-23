@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   poweredByHeader: false,
+  // Allow isolated verification builds without disturbing the default output.
+  distDir: process.env.DATOKO_BUILD_DIR || ".next",
   // Serialize Windows build writes to avoid filesystem permission races.
   experimental: { cpus: process.platform === "win32" ? 1 : 2, ...(process.platform === "win32" ? { webpackBuildWorker: false, staticGenerationMaxConcurrency: 1 } : {}) },
   serverExternalPackages: ["pg", "pg-boss"],

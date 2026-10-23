@@ -10,11 +10,11 @@ export default function Signup() {
   const configured = loginMissing().length === 0 && !isDemo();
   return <div className="auth-page"><div className="auth-panel">
     <Link href="/" className="brand"><span className="brand-mark"><i/><i/><i/></span>datoko<span className="brand-period">.</span></Link>
-    <p className="eyebrow">YOUR PRIVATE WORKSPACE</p><h1>Create your account.</h1>
-    <p>Set up your email and password to keep your shop&apos;s records close.</p>
+    <h1>Create account</h1>
+    <p>Use your email and a password to create a private workspace.</p>
     <PasswordForm disabled={!configured} signUp/>
-    <small>Your account has its own private workspace.</small>
+
     <Link className="auth-secondary" href="/login">Already have an account? Sign in</Link>
-    {!configured && <Link className="auth-secondary" href="/setup">View setup requirements</Link>}
+    {!configured && <><small>{isDemo() ? "Account access is disabled in this read-only demo." : "Account access is unavailable until setup is complete."}</small><Link className="auth-secondary" href="/setup">View setup requirements</Link></>}
   </div></div>;
 }

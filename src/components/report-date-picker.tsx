@@ -118,9 +118,9 @@ export function ReportDatePicker({ period, onSelect }: { period: ReportPeriod; o
         {view === "year" && <div className="date-picker-years" role="group" aria-label="Reporting years">{years.map(value => <button key={value} type="button" onClick={() => choose({ preset: "custom", from: `${value}-01-01`, to: value === currentYear ? period.today : `${value}-12-31` })}>{value}</button>)}</div>}
         {view === "custom" && <div className="date-picker-custom">
           <p>Choose dates. Valid changes update the report automatically.</p>
-          <label className="report-field">From<input aria-label="From date" type="date" min="2000-01-01" max={period.today} value={from} onChange={event => { setFrom(event.target.value); setDirty(true); }}/></label>
-          <label className="report-field">To<input aria-label="To date" type="date" min="2000-01-01" max={period.today} value={to} onChange={event => { setTo(event.target.value); setDirty(true); }}/></label>
-          {error && <p className="report-error" role="alert">{error}</p>}
+          <label className="report-field">From<input aria-label="From date" aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} type="date" min="2000-01-01" max={period.today} value={from} onChange={event => { setFrom(event.target.value); setDirty(true); }}/></label>
+          <label className="report-field">To<input aria-label="To date" aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} type="date" min="2000-01-01" max={period.today} value={to} onChange={event => { setTo(event.target.value); setDirty(true); }}/></label>
+          {error && <p id={`${id}-error`} className="report-error" role="alert">{error}</p>}
         </div>}
         <p className="date-picker-timezone">All dates in Jakarta · WIB</p>
       </div>

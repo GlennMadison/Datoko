@@ -20,8 +20,11 @@ export function AdvertisementImport({ disabled }: { disabled: boolean }) {
   const currentQuery = useSearchParams().toString();
   const { update, getQuery, refresh } = useReportNavigation();
   const [busy, setBusy] = useState(false), [message, setMessage] = useState("");
+  const [failed, setFailed] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (disabled || busy) return;
+    setFailed(true);
     const form = event.currentTarget;
     const file = new FormData(form).get("report");
     if (!(file instanceof File) || !file.size) { setMessage("Choose a normalized JSON report."); return; }
@@ -33,11 +36,12 @@ export function AdvertisementImport({ disabled }: { disabled: boolean }) {
       const response = await fetch("/api/advertisement/import", { method: "POST", headers: { "Content-Type": "application/json" }, body });
       const result = await response.json();
       if (!response.ok) { setMessage(messages[result.error] ?? "The report could not be imported. Check your sign-in and report format."); return; }
+      setFailed(false);
       setMessage(`${result.imported} reporting periods imported; ${result.unchanged} unchanged.`);
       if (new URLSearchParams(getQuery()).get("dataset") !== result.datasetKey) update({ dataset: result.datasetKey, campaign: "" }); else refresh();
       form.reset();
     } catch { setMessage("Import failed. Your saved report was not replaced by a partial import."); }
     finally { setBusy(false); }
   }
-  return <form onSubmit={submit} className="ad-import"><label htmlFor="ad-report-file">Normalized ad report (.json)</label><div><input id="ad-report-file" name="report" type="file" accept="application/json,.json" disabled={disabled || busy} required/><Button disabled={disabled || busy}>{busy ? "Importing…" : "Import report"}</Button>{!disabled && <><a className="text-link" href="/api/advertisement/template">Download format</a><a className="text-link" href={`/api/advertisement/order-items?${currentQuery}`}>Download order item references</a></>}</div><p>Use a report with explicit ad-attributed items and outcomes. Aggregate totals alone provide Original ROAS. Importing a report does not change Shopee ads.</p>{message && <p role="status">{message}</p>}</form>;
+  return <form onSubmit={submit} className="ad-import" aria-busy={busy}><label htmlFor="ad-report-file">Normalized ad report (.json)</label><div><input id="ad-report-file" name="report" type="file" accept="application/json,.json" aria-describedby="ad-report-help" disabled={disabled || busy} required/><Button disabled={disabled || busy}>{busy ? "Importing…" : "Import report"}</Button>{!disabled && <><a className="text-link" href="/api/advertisement/template">Download format</a><a className="text-link" href={`/api/advertisement/order-items?${currentQuery}`}>Download order item references</a></>}</div><p id="ad-report-help">JSON, up to 2 MiB. Include attributed items and outcomes to calculate Real ROAS. Aggregate totals provide Original ROAS only. This import does not change your Shopee ads.</p>{disabled && <p>Report imports are disabled in demo mode.</p>}{message && <p className={failed ? "report-error" : undefined} role={failed ? "alert" : "status"}>{message}</p>}</form>;
 }

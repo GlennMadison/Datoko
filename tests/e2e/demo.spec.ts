@@ -5,7 +5,7 @@ test("dashboard pages render and navigate without browser errors", async ({ page
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/");
   await expect(page).toHaveURL(/\/overview$/);
-  await expect(page.getByRole("heading", { name: "Your business, at a glance." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
   await expect(page.getByText("No Shopee shop is connected.", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sync now" })).toBeDisabled();
   await page.getByRole("button", { name: /^Date range:/ }).click();
@@ -21,16 +21,16 @@ test("dashboard pages render and navigate without browser errors", async ({ page
   expect(toolbar!.y + toolbar!.height).toBeLessThanOrEqual(chart!.y);
   await page.screenshot({ path: testInfo.outputPath("overview.png"), fullPage: true });
   for (const [route, heading] of [
-    ["/orders", "Every order. Full context."],
-    ["/products", "Better inputs. Clearer margins."],
-    ["/returns", "Returns stay part of the story."],
-    ["/advertisement", "Advertisement."],
-    ["/settings/integrations", "Your shop connection."],
-    ["/settings/sync", "Know what's up to date."],
+    ["/orders", "Orders"],
+    ["/products", "Products & costs"],
+    ["/returns", "Returns"],
+    ["/advertisement", "Advertisement"],
+    ["/settings/integrations", "Connections"],
+    ["/settings/sync", "Sync history"],
   ]) {
     const response = await page.goto(route);
     expect(response?.status()).toBe(200);
-    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     if (["/orders", "/products", "/returns", "/advertisement"].includes(route)) {
       await expect(page.getByRole("region", { name: "Reporting period" }).getByLabel("Graph interval")).toBeVisible();
@@ -62,15 +62,15 @@ test("demo controls are read-only and unavailable integrations are labeled", asy
   await expect(page.getByRole("button", { name: "Connect Shopee" })).toBeDisabled();
   await expect(page.getByText("No live shop connected", { exact: true })).toBeVisible();
   await page.goto("/returns");
-  await expect(page.getByText("Live sync awaiting validation", { exact: true })).toBeVisible();
+  await expect(page.getByText("Live return sync is not yet enabled.", { exact: true })).toBeVisible();
   await page.goto("/login");
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeDisabled();
   await expect(page.getByLabel("Email", { exact: true })).toBeDisabled();
   await page.getByRole("link", { name: "Create your account" }).click();
-  await expect(page.getByRole("heading", { name: "Create your account." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create account", exact: true })).toBeDisabled();
   await page.getByRole("link", { name: "View setup requirements" }).click();
-  await expect(page.getByRole("heading", { name: "Make room for your shop." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Setup" })).toBeVisible();
 });
 
 test("native same-origin forms preserve their origin and reach the demo guard", async ({ page }) => {

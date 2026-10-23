@@ -19,7 +19,7 @@ export function SyncButton({ shopId, disabled = false }: { shopId?: string; disa
     } catch { setMessage("Could not start sync. Check your connection settings."); }
     finally { setBusy(false); }
   }
-  return <div className="sync-action"><Button className="button-outline" disabled={disabled || busy || !shopId} onClick={sync}><Icon name="sync" size={15}/>{busy ? "Queuing…" : "Sync now"}</Button>{message && <span className="action-message" role="status">{message}</span>}</div>;
+  return <div className="sync-action"><Button className="button-outline" disabled={disabled || busy || !shopId} title={disabled || !shopId ? "Connect a shop in a live workspace to sync orders" : undefined} aria-busy={busy} onClick={sync}><Icon name="sync" size={15}/>{busy ? "Queuing…" : "Sync now"}</Button>{message && <span className="action-message" role="status">{message}</span>}</div>;
 }
 
 export function AutoSync({ shopId, enabled, lastSyncedAt }: { shopId?: string; enabled: boolean; lastSyncedAt: string | null }) {

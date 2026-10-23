@@ -46,7 +46,7 @@ test("separate accounts keep shop data and mutations private", async ({ page, br
     const foreignShop = (await pool.query('SELECT "sourceShopId" FROM shops WHERE id=$1', [shopIds[1]])).rows[0];
     expect((await page.request.post("/api/advertisement/import", { headers, data: { ...template, sourceShopId: foreignShop.sourceShopId } })).status()).toBe(404);
     await page.goto(`/orders/${sns[1]}`);
-    await expect(page.getByRole("heading", { name: "That record isn't here.", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Page not found", exact: true })).toBeVisible();
     await expect(page.getByText(products[1], { exact: true })).toHaveCount(0);
     expect((await pool.query('SELECT count(*)::int AS count FROM sku_cost_versions WHERE "variantId"=$1', [variantIds[1]])).rows[0].count).toBe(0);
     expect((await page.request.post("/api/auth/sign-out", { headers, data: {} })).status()).toBe(200);

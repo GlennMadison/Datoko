@@ -17,6 +17,7 @@ test("date presets, months, weeks and intervals reload automatically and survive
   await expect(page).toHaveURL(/preset=today/);
   await page.getByLabel("Graph interval").selectOption("3hour");
   await expect(page).toHaveURL(/interval=3hour/);
+  if (await page.getByRole("button", { name: /Menu/ }).isVisible()) await page.getByRole("button", { name: /Menu/ }).click();
   await page.getByRole("link", { name: "Advertisement", exact: true }).click();
   await expect(page).toHaveURL(/advertisement\?.*preset=today.*interval=3hour/);
   await expect(page.getByLabel("Graph interval")).toHaveValue("3hour");
@@ -34,11 +35,12 @@ test("date presets, months, weeks and intervals reload automatically and survive
   await expect(page.getByTestId("reporting-range")).toContainText("29 Feb 2024");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("calendar-filters.png"), fullPage: true });
+  if (await page.getByRole("button", { name: /Menu/ }).isVisible()) await page.getByRole("button", { name: /Menu/ }).click();
   await page.getByRole("link", { name: "Orders", exact: true }).click();
   await expect(page).toHaveURL(/orders\?.*week=4/);
   await expect(page.getByTestId("reporting-range")).toContainText("22 Feb 2024");
   await page.goBack();
-  await expect(page.getByRole("heading", { name: "Advertisement.", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Advertisement", exact: true })).toBeVisible();
   await page.goBack();
   await expect(page.getByTestId("reporting-range")).toContainText("1 Feb 2024");
 });
