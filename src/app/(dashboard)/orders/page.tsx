@@ -25,7 +25,7 @@ export default async function Orders({ searchParams }: { searchParams: Promise<R
       <label>Status<select name="status" aria-label="Order status" defaultValue={status}><option value="">All statuses</option><option value="COMPLETED">Completed</option><option value="READY_TO_SHIP">Ready to ship</option><option value="SHIPPED">Shipped</option><option value="CANCELLED">Cancelled</option></select></label>
       <button className="button button-outline" type="submit">Filter</button>{filtered && <ReportLink href="/orders" className="button button-outline">Clear filters</ReportLink>}
     </form>
-    <Card className="report-trend-card" role="region" aria-label="Order chart"><div className="card-heading report-chart-heading"><div><h2>Orders over time</h2><p>By order creation date{filtered ? "; current search and status filters applied" : ""}</p></div></div><ReportChart data={trend} series={[{ key: "orders", label: "Orders", color: "#216e59" }]} unit="count" label="Orders over time"/></Card>
+    <Card className="report-trend-card" role="region" aria-label="Order chart"><div className="card-heading report-chart-heading"><div><h2>Orders over time</h2><p>By order creation date{filtered ? "; current search and status filters applied" : ""}</p></div></div><ReportChart data={trend} series={[{ key: "orders", label: "Orders", color: "var(--chart-primary)" }]} unit="count" label="Orders over time"/></Card>
     <Card><div className="card-heading"><h2>{filtered ? "Matching orders" : "Order list"}</h2><span className="muted">{rows.length} results</span></div><OrderTable orders={rows} filtered={filtered}/></Card>
     <p className="page-note">Order dates use WIB. Buyer totals may include shipping and differ from merchandise sales and advertising revenue.</p>
   </>;

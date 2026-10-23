@@ -10,10 +10,10 @@ export function ReportChart({ data, series, unit = "IDR", label }: { data: Repor
   return <>
     <div className="report-chart" role="img" aria-label={`${label}. ${unit === "IDR" ? "Values in IDR; axis in thousands." : unit === "ROAS" ? "Revenue per unit of ad spend." : "Number of items."} Exact values are available in View chart data.`}>
       <ResponsiveContainer width="100%" height={260}><ComposedChart data={data} margin={{ left: 5, right: 16, top: 12, bottom: 0 }}>
-        <CartesianGrid vertical={false} stroke="#e9ede9"/>
-        <XAxis dataKey="date" axisLine={false} tickLine={false} minTickGap={35} tick={{ fill: "#65716b", fontSize: 11 }}/>
-        <YAxis axisLine={false} tickLine={false} width={65} allowDecimals={unit !== "count"} tick={{ fill: "#65716b", fontSize: 11 }} tickFormatter={axisFormat}/>
-        <Tooltip formatter={value => format(value)} contentStyle={{ borderRadius: 6, borderColor: "#d9e1da", fontSize: 12, boxShadow: "0 3px 12px #203c2810" }}/>
+        <CartesianGrid vertical={false} stroke="var(--line)"/>
+        <XAxis dataKey="date" axisLine={false} tickLine={false} minTickGap={35} tick={{ fill: "var(--muted)", fontSize: 11 }}/>
+        <YAxis axisLine={false} tickLine={false} width={65} allowDecimals={unit !== "count"} tick={{ fill: "var(--muted)", fontSize: 11 }} tickFormatter={axisFormat}/>
+        <Tooltip labelStyle={{ color: "var(--ink)" }} cursor={{ stroke: "var(--muted)" }} formatter={value => format(value)} contentStyle={{ backgroundColor: "var(--surface)", color: "var(--ink)", borderRadius: 6, borderColor: "var(--line)", fontSize: 12, boxShadow: "0 3px 12px var(--shadow)" }}/>
         {series.length > 1 && <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }}/ >}
         {series.map((value, index) => index === 0 && series.length === 1
           ? <Area key={value.key} dataKey={value.key} name={value.label} type="linear" stroke={value.color} strokeWidth={2} fill={value.color} fillOpacity={0.06} dot={data.length === 1 ? { r: 3 } : false} isAnimationActive={false} connectNulls={false}/>

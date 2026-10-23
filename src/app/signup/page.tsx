@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import { redirect } from "next/navigation";
 import { PasswordForm } from "@/components/auth-actions";
 import { getConfig, isDemo, loginMissing } from "@/server/env";
@@ -8,7 +9,7 @@ export default function Signup() {
   const config = getConfig();
   if (config.AUTH_METHOD !== "email-password" || config.EMAIL_SIGNUP_ENABLED !== "true") redirect("/login");
   const configured = loginMissing().length === 0 && !isDemo();
-  return <div className="auth-page"><div className="auth-panel">
+  return <div className="auth-page"><div className="auth-theme"><ThemeSwitcher/></div><div className="auth-panel">
     <Link href="/" className="brand"><span className="brand-mark"><i/><i/><i/></span>datoko<span className="brand-period">.</span></Link>
     <h1>Create account</h1>
     <p>Use your email and a password to create a private workspace.</p>

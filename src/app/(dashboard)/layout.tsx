@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isDemo, loginMissing } from "@/server/env";
 import { requireUser } from "@/server/auth";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import { Navigation } from "@/components/navigation";
 import { SignOut } from "@/components/auth-actions";
 import { ReportNavigationProvider } from "@/components/report-navigation";
@@ -28,7 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       </div></div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><span className="workspace-title">Workspace</span><div className="topbar-right"><span>Jakarta · WIB</span>{!demo && <span className="mobile-sign-out"><SignOut/></span>}</div></header>
+      <header className="topbar"><span className="workspace-title">Workspace</span><div className="topbar-right"><span>Jakarta · WIB</span><ThemeSwitcher/>{!demo && <span className="mobile-sign-out"><SignOut/></span>}</div></header>
       {demo && <div className="demo-banner"><span><strong>Demo</strong> Sample data. No Shopee shop is connected.</span><Link href="/settings/integrations">Connection settings</Link></div>}
       <main id="main-content" className="main-content" tabIndex={-1}><ReportNavigationProvider>{children}</ReportNavigationProvider></main>
       <footer className="footer"><span>Datoko</span><span>IDR · Asia/Jakarta (WIB)</span></footer>
