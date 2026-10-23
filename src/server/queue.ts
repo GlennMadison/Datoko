@@ -14,7 +14,10 @@ export async function getQueue(): Promise<PgBoss> {
     // create database schemas. Even CREATE SCHEMA IF NOT EXISTS requires that
     // permission, so skip it when setup has already provisioned the schema.
     const { rows } = await getPool().query<{ exists: boolean }>("SELECT to_regnamespace('pgboss') IS NOT NULL AS exists");
-    const boss = new PgBoss({ ...databaseConnectionOptions(), createSchema: !rows[0]?.exists, max: 2 });
+    // Hosted maintenance runs inside the authenticated batch request. Do not
+    // start background schedulers that outlive a serverless invocation.
+    const hosted = process.env.VERCEL === "1" ? { supervise: false, schedule: false, registerInstance: false, migrate: false } : {};
+    const boss = new PgBoss({ ...databaseConnectionOptions(), createSchema: !rows[0]?.exists, max: 2, ...hosted });
     boss.on("error", () => console.error(JSON.stringify({ event: "queue_error" })));
     await boss.start();
     await boss.createQueue("datoko.sync", { retryLimit: 5, retryDelay: 30, retryBackoff: true, expireInSeconds: 1800 });
