@@ -16,7 +16,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { outputFolder: "playwright-report/auth", open: "never" }]],
   use: { baseURL: "https://127.0.0.1:3101", ignoreHTTPSErrors: true, reducedMotion: "reduce", trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] } },
+    { name: "desktop", use: { ...devices["Desktop Chrome"], extraHTTPHeaders: { "X-Forwarded-For": "192.0.2.21" } } },
+    { name: "mobile", use: { ...devices["Pixel 7"], extraHTTPHeaders: { "X-Forwarded-For": "192.0.2.22" } } },
   ],
 });

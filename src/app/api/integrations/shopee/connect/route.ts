@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOwner } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { beginConnection, authCookieName } from "@/server/connections";
 import { assertSameOrigin } from "@/core/security";
 import { getConfig } from "@/server/env";
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   try {
     const config = getConfig();
     assertSameOrigin(request.headers.get("origin"), config.APP_BASE_URL);
-    const actor = await requireOwner(request.headers);
+    const actor = await requireUser(request.headers);
     const form = await request.formData();
     const result = await beginConnection(actor, String(form.get("shopId") ?? ""), form.get("returnTo"));
     const response = NextResponse.redirect(result.url, 303);

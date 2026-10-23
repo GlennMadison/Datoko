@@ -205,4 +205,27 @@ test("sandbox service lifecycle with real PostgreSQL and simulated Shopee", asyn
   await assert.rejects(finishConnection(cancelled, pending.input), { code: "AUTH_ATTEMPT_USED" });
   assert.equal(exchangeCount, 2);
   t.diagnostic("Reconnect generation fencing, disconnect token removal, and record retention passed.");
+  await t.test("another account cannot claim an existing shop and gets its own scheduled sync", async () => {
+    const otherOwner = await db.user.create({ data: { id: randomUUID(), email: `second-${randomUUID()}@example.test`, name: "Second seller" } });
+    let secondShopId: string | undefined;
+    try {
+      await assert.rejects(beginConnection({ ownerId: otherOwner.id, sessionId: randomUUID() }, sourceShopId, "/overview"), { code: "SHOP_OWNER_MISMATCH" });
+      assert.equal(await db.authAttempt.count({ where: { ownerId: otherOwner.id } }), 0);
+      const second = await db.shop.create({ data: { ownerId: otherOwner.id, sourceShopId: `${sourceShopId}2`, environment: "sandbox", name: "Second seller shop", connection: { create: { accessExpiresAt: new Date(Date.now() + 3_600_000) } } } });
+      secondShopId = second.id;
+      const { dispatchDueSyncs } = await import("../src/server/sync-dispatch.ts");
+      await dispatchDueSyncs();
+      const queuedRun = await db.syncRun.findFirstOrThrow({ where: { shopId: second.id, reason: "SCHEDULED", status: "QUEUED" } });
+      assert.ok(queuedRun.jobId);
+      assert.equal((await boss.getJobById<{ shopId: string }>("datoko.sync", queuedRun.jobId))?.data.shopId, second.id);
+    } finally {
+      if (secondShopId) {
+        await db.$executeRaw`DELETE FROM pgboss.job WHERE data->>'shopId' = ${secondShopId}`;
+        await db.syncRun.deleteMany({ where: { shopId: secondShopId } });
+        await db.shopConnection.deleteMany({ where: { shopId: secondShopId } });
+        await db.shop.delete({ where: { id: secondShopId } });
+      }
+      await db.user.delete({ where: { id: otherOwner.id } });
+    }
+  });
 });

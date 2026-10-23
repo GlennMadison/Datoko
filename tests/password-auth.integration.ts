@@ -18,7 +18,7 @@ delete process.env.GOOGLE_CLIENT_ID;
 delete process.env.GOOGLE_CLIENT_SECRET;
 delete process.env.OWNER_GOOGLE_SUB;
 const { getDb, closeDb } = await import("../src/server/db.ts");
-const { getAuth, requireOwner } = await import("../src/server/auth.ts");
+const { getAuth, requireUser } = await import("../src/server/auth.ts");
 const { loginMissing, connectionMissing } = await import("../src/server/env.ts");
 
 test("email/password auth uses real SQL accounts and signed sessions", async t => {
@@ -31,7 +31,7 @@ test("email/password auth uses real SQL accounts and signed sessions", async t =
   function request(path: string, body?: Record<string, unknown>, cookie?: string) {
     return auth.handler(new Request(`${origin}/api/auth${path}`, {
       method: body ? "POST" : "GET",
-      headers: { "Content-Type": "application/json", Origin: origin, ...(cookie ? { Cookie: cookie } : {}) },
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": "192.0.2.11", Origin: origin, ...(cookie ? { Cookie: cookie } : {}) },
       ...(body ? { body: JSON.stringify(body) } : {}),
     }));
   }
@@ -39,17 +39,16 @@ test("email/password auth uses real SQL accounts and signed sessions", async t =
   let ownerId = "";
   let signedCookie = "";
 
-  await t.test("login config does not need Google or Shopee credentials", async () => {
+  await t.test("login config does not need an owner email, Google, or Shopee credentials", async () => {
+    delete process.env.OWNER_EMAIL;
     assert.deepEqual(loginMissing(), []);
     assert.ok(!connectionMissing().includes("GOOGLE_CLIENT_ID"));
     assert.ok(!connectionMissing().includes("GOOGLE_CLIENT_SECRET"));
     const ok = await request("/ok");
     assert.equal(ok.status, 200);
   });
-  await t.test("short passwords and non-owner signup create no account", async () => {
+  await t.test("short passwords create no account", async () => {
     assert.equal((await request("/sign-up/email", { email: ownerEmail, name: "Owner", password: "short" })).status, 400);
-    const outsider = await request("/sign-up/email", { email: otherEmail, name: "Other", password, emailVerified: true });
-    assert.equal(outsider.status, 403);
     assert.equal(await db.user.count({ where: { email: { in: [ownerEmail, otherEmail] } } }), 0);
   });
   await t.test("signup stores a password hash and authenticates without email verification", async () => {
@@ -65,7 +64,7 @@ test("email/password auth uses real SQL accounts and signed sessions", async t =
     assert.notEqual(account.password, password);
     signedCookie = cookieOf(response);
     assert.match(signedCookie, /session_token/);
-    const owner = await requireOwner(new Headers({ Cookie: signedCookie }));
+    const owner = await requireUser(new Headers({ Cookie: signedCookie }));
     assert.equal(owner.ownerId, ownerId);
   });
   await t.test("duplicate signup and incorrect passwords cannot replace the owner account", async () => {
@@ -78,22 +77,26 @@ test("email/password auth uses real SQL accounts and signed sessions", async t =
   });
   await t.test("signout revokes access and login issues a new valid session", async () => {
     assert.equal((await request("/sign-out", {}, signedCookie)).status, 200);
-    await assert.rejects(requireOwner(new Headers({ Cookie: signedCookie })), { code: "SIGN_IN_REQUIRED" });
+    await assert.rejects(requireUser(new Headers({ Cookie: signedCookie })), { code: "SIGN_IN_REQUIRED" });
     const login = await request("/sign-in/email", { email: ownerEmail, password });
     assert.equal(login.status, 200);
     signedCookie = cookieOf(login);
-    assert.equal((await requireOwner(new Headers({ Cookie: signedCookie }))).ownerId, ownerId);
+    assert.equal((await requireUser(new Headers({ Cookie: signedCookie }))).ownerId, ownerId);
   });
-  await t.test("another SQL user cannot access the private workspace with a real session", async () => {
-    const other = await db.user.create({ data: { id: randomUUID(), email: otherEmail, name: "Other", emailVerified: true } });
-    const session = await (await auth.$context).internalAdapter.createSession(other.id);
-    assert.ok(session);
-    // Sign the fixture cookie in the same format as Better Auth.
-    const { createHmac } = await import("node:crypto");
-    const context = await auth.$context;
-    const signature = createHmac("sha256", process.env.BETTER_AUTH_SECRET!).update(session.token).digest("base64");
-    const cookie = `${context.authCookies.sessionToken.name}=${encodeURIComponent(`${session.token}.${signature}`)}`;
-    await assert.rejects(requireOwner(new Headers({ Cookie: cookie })), { code: "OWNER_ONLY" });
+  await t.test("a different email can sign up and log in to its own session", async () => {
+    const response = await request("/sign-up/email", { email: otherEmail, name: "Another seller", password, emailVerified: true });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.notEqual(body.user.id, ownerId);
+    assert.equal(body.user.emailVerified, false);
+    const cookie = cookieOf(response);
+    assert.equal((await requireUser(new Headers({ Cookie: cookie }))).ownerId, body.user.id);
+    assert.equal((await requireUser(new Headers({ Cookie: signedCookie }))).ownerId, ownerId);
+    assert.equal((await request("/sign-out", {}, cookie)).status, 200);
+    const login = await request("/sign-in/email", { email: otherEmail, password });
+    assert.equal(login.status, 200);
+    assert.equal((await requireUser(new Headers({ Cookie: cookieOf(login) }))).ownerId, body.user.id);
+    assert.equal((await requireUser(new Headers({ Cookie: signedCookie }))).ownerId, ownerId);
   });
   await t.test("cross-site signup is rejected before creating records", async () => {
     const response = await auth.handler(new Request(`${origin}/api/auth/sign-up/email`, {
@@ -102,10 +105,16 @@ test("email/password auth uses real SQL accounts and signed sessions", async t =
     }));
     assert.equal(response.status, 403);
   });
-  await t.test("repeated login attempts are rate limited", async () => {
+  await t.test("login rate limits are shared across auth instances", async () => {
+    const { betterAuth } = await import("better-auth");
+    const secondInstance = betterAuth(auth.options);
     let status = 0;
     for (let attempt = 0; attempt < 11 && status !== 429; attempt++) {
-      status = (await request("/sign-in/email", { email: ownerEmail, password: "incorrect-password-2026" })).status;
+      const instance = attempt % 2 ? secondInstance : auth;
+      status = (await instance.handler(new Request(`${origin}/api/auth/sign-in/email`, {
+        method: "POST", headers: { "Content-Type": "application/json", Origin: origin, "X-Forwarded-For": "192.0.2.11" },
+        body: JSON.stringify({ email: ownerEmail, password: "incorrect-password-2026" }),
+      }))).status;
     }
     assert.equal(status, 429);
   });

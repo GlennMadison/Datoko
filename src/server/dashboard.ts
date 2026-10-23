@@ -1,6 +1,6 @@
 import { getDb } from "./db.ts";
 import { getConfig, isDemo, loginMissing } from "./env.ts";
-import { requireOwner } from "./auth.ts";
+import { requireUser } from "./auth.ts";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppError } from "../core/errors.ts";
@@ -55,10 +55,10 @@ export function demoDashboard(period: ReportPeriod): DashboardData {
   };
 }
 
-export async function requireDashboardOwner() {
+export async function requireDashboardUser() {
   if (loginMissing().length) redirect("/setup");
-  return requireOwner(await headers()).catch(error => {
-    if (error instanceof AppError && ["SIGN_IN_REQUIRED", "OWNER_ONLY"].includes(error.code)) redirect("/login");
+  return requireUser(await headers()).catch(error => {
+    if (error instanceof AppError && ["SIGN_IN_REQUIRED", "AUTH_METHOD_REQUIRED"].includes(error.code)) redirect("/login");
     throw error;
   });
 }
@@ -66,7 +66,7 @@ export async function requireDashboardOwner() {
 export async function getDashboardData(selection: ReportPeriod | number = 30): Promise<DashboardData> {
   const period = typeof selection === "number" ? resolveReportPeriod({ days: String(selection) }) : selection;
   if (isDemo()) return demoDashboard(period);
-  const actor = await requireDashboardOwner();
+  const actor = await requireDashboardUser();
   const db = getDb();
   const config = getConfig();
   const shop = await db.shop.findFirst({ where: { ownerId: actor.ownerId, environment: config.SHOPEE_ENV }, include: { connection: true, syncStates: true } });

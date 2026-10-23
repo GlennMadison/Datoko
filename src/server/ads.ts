@@ -1,7 +1,7 @@
 import { getDb } from "./db.ts";
 import { getConfig, isDemo } from "./env.ts";
 import { transactionLock } from "./queue.ts";
-import { requireDashboardOwner, demoDashboard } from "./dashboard.ts";
+import { requireDashboardUser, demoDashboard } from "./dashboard.ts";
 import { validateAdImport } from "./ads-import-schema.ts";
 import { attributionLineKey, calculateRoas, type AdSourceReport, type AttributionEvidence, type RoasResult } from "../core/ads-roas.ts";
 import { createTimeBuckets, dayStart, localDate, shiftDate, type ReportPeriod, type ReportQuery } from "../core/reporting-period.ts";
@@ -174,6 +174,6 @@ export async function getAdvertisementData(period: ReportPeriod, filters: { data
     if (filters.dataset && filters.dataset !== "sample") throw new AppError("INVALID_ADS_DATASET", 400);
     return demoAdvertisement(period, filters.campaign);
   }
-  const actor = await requireDashboardOwner();
+  const actor = await requireDashboardUser();
   return advertisementForOwner(actor.ownerId, period, filters);
 }

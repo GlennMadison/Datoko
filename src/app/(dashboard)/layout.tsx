@@ -2,7 +2,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isDemo, loginMissing } from "@/server/env";
-import { requireOwner } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { Navigation } from "@/components/navigation";
 import { Icon } from "@/components/icons";
 import { SignOut } from "@/components/auth-actions";
@@ -12,9 +12,10 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const demo = isDemo();
+  let actor: Awaited<ReturnType<typeof requireUser>> | null = null;
   if (!demo) {
     if (loginMissing().length) redirect("/setup");
-    try { await requireOwner(await headers()); } catch { redirect("/login"); }
+    try { actor = await requireUser(await headers()); } catch { redirect("/login"); }
   }
 
   return (
@@ -37,9 +38,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <p>Your records stay.<br/><span>Your data stays up to date.</span></p>
           </div>
           <div className="owner">
-            <span className="owner-avatar">{demo ? "D" : "G"}</span>
+            <span className="owner-avatar">{demo ? "D" : actor?.name.trim().charAt(0).toUpperCase() || "D"}</span>
             <div>
-              <strong>{demo ? "Demo workspace" : "Workspace owner"}</strong>
+              <strong>{demo ? "Demo workspace" : actor?.name || "Your account"}</strong>
               {demo ? <span>Sample data</span> : <SignOut/>}
             </div>
             <span className="owner-status"/>

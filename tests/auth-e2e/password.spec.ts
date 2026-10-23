@@ -9,7 +9,7 @@ const pool = new Pool({ connectionString: databaseUrl });
 test.afterEach(async () => { await pool.query('DELETE FROM users WHERE email = $1', [email]); });
 test.afterAll(async () => { await pool.end(); });
 
-test("owner signup, login, validation, and logout work without Google", async ({ page }, testInfo) => {
+test("signup, login, validation, and logout work without Google", async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   await page.goto("/overview");
@@ -42,6 +42,6 @@ test("owner signup, login, validation, and logout work without Google", async ({
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page).toHaveURL(/\/overview$/);
   await page.goto("/settings/integrations");
-  await expect(page.getByText("Owner sign-in", { exact: true })).toBeVisible();
+  await expect(page.getByText("Account sign-in", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });

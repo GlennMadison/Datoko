@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { authCookieName, finishConnection } from "@/server/connections";
 import { getDb } from "@/server/db";
 import { getConfig } from "@/server/env";
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
   const target = new URL("/settings/integrations", config.APP_BASE_URL);
   let processing = false;
   try {
-    const actor = await requireOwner(request.headers);
+    const actor = await requireUser(request.headers);
     const params = callbackParameters(request.nextUrl.searchParams);
     const cookie = request.cookies.get(authCookieName())?.value;
     const [attemptId, browserSecret, extra] = cookie?.split(".") ?? [];

@@ -24,6 +24,7 @@ function createAuth() {
     socialProviders: passwordLogin ? {} : { google: { clientId: config.GOOGLE_CLIENT_ID!, clientSecret: config.GOOGLE_CLIENT_SECRET!, prompt: "select_account" } },
     rateLimit: {
       enabled: true,
+      storage: "database",
       customRules: {
         "/sign-in/email": { window: 60, max: 10 },
         "/sign-up/email": { window: 60, max: 5 },
@@ -31,7 +32,7 @@ function createAuth() {
     },
     databaseHooks: { user: { create: { before: async (user, context) => {
       const allowedMethod = passwordLogin ? context?.path === "/sign-up/email" : user.emailVerified;
-      if (!allowedMethod || user.email.toLowerCase() !== config.OWNER_EMAIL!.trim().toLowerCase()) throw new APIError("FORBIDDEN", { code: "OWNER_ONLY", message: "This dashboard is restricted to its owner." });
+      if (!allowedMethod) throw new APIError("FORBIDDEN", { code: "AUTH_METHOD_REQUIRED", message: "Use the configured sign-in method." });
     } } } },
   });
 }
@@ -39,18 +40,19 @@ function createAuth() {
 let auth: ReturnType<typeof createAuth> | undefined;
 export function getAuth() { return auth ??= createAuth(); }
 
-export async function requireOwner(headers: Headers) {
+// A signed session authenticates a user, not access to every workspace. Callers
+// must scope reads and writes to this ownerId (the owner of that user's shops).
+export async function requireUser(headers: Headers) {
   const config = liveConfig();
   const session = await getAuth().api.getSession({ headers });
   if (!session) throw new AppError("SIGN_IN_REQUIRED", 401);
-  if (session.user.email.toLowerCase() !== config.OWNER_EMAIL!.trim().toLowerCase()) throw new AppError("OWNER_ONLY", 403);
   if (config.AUTH_METHOD === "email-password") {
     const account = await getDb().account.findFirst({ where: { userId: session.user.id, providerId: "credential", password: { not: null } } });
-    if (!account?.password) throw new AppError("OWNER_ONLY", 403);
-  } else if (!session.user.emailVerified) throw new AppError("OWNER_ONLY", 403);
-  if (config.AUTH_METHOD === "google" && config.OWNER_GOOGLE_SUB) {
-    const account = await getDb().account.findFirst({ where: { userId: session.user.id, providerId: "google", accountId: config.OWNER_GOOGLE_SUB } });
-    if (!account) throw new AppError("OWNER_ONLY", 403);
+    if (!account?.password) throw new AppError("AUTH_METHOD_REQUIRED", 403);
+  } else {
+    if (!session.user.emailVerified) throw new AppError("AUTH_METHOD_REQUIRED", 403);
+    const account = await getDb().account.findFirst({ where: { userId: session.user.id, providerId: "google" } });
+    if (!account) throw new AppError("AUTH_METHOD_REQUIRED", 403);
   }
   return { ownerId: session.user.id, sessionId: session.session.id, name: session.user.name };
 }

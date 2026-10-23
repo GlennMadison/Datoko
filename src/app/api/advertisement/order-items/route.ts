@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getConfig } from "@/server/env";
 import { getDb } from "@/server/db";
 import { REPORT_KEYS, resolveReportPeriod, type ReportQuery } from "@/core/reporting-period";
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
-    const actor = await requireOwner(request.headers);
+    const actor = await requireUser(request.headers);
     const query: ReportQuery = {};
     for (const key of REPORT_KEYS) {
       const values = request.nextUrl.searchParams.getAll(key);

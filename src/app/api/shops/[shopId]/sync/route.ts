@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireOwner } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getDb } from "@/server/db";
 import { getQueue, enqueueSync } from "@/server/queue";
 import { assertSameOrigin } from "@/core/security";
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export async function POST(request: Request, context: { params: Promise<{ shopId: string }> }) {
   try {
     assertSameOrigin(request.headers.get("origin"), getConfig().APP_BASE_URL);
-    const actor = await requireOwner(request.headers);
+    const actor = await requireUser(request.headers);
     const { shopId } = await context.params;
     const db = getDb();
     const shop = await db.shop.findFirst({ where: { id: shopId, ownerId: actor.ownerId, environment: getConfig().SHOPEE_ENV }, include: { connection: true } });

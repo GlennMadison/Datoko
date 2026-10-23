@@ -13,12 +13,12 @@ Object.assign(process.env, {
 });
 delete process.env.OWNER_GOOGLE_SUB;
 const { getDb, closeDb } = await import("../src/server/db.ts");
-const { getAuth, requireOwner } = await import("../src/server/auth.ts");
+const { getAuth, requireUser } = await import("../src/server/auth.ts");
 
 // Seed sessions only in the dedicated test database. This verifies the actual
-// Better Auth adapter and backend owner checks without bypassing production
+// Better Auth adapter and backend session checks without bypassing production
 // login or pretending that Google's interactive OAuth flow was tested.
-test("real auth adapter enforces private owner sessions", async t => {
+test("real auth adapter authenticates separate verified Google accounts", async t => {
   const db = getDb();
   const ownerId = `owner-${fixture}`;
   const outsiderId = `outsider-${fixture}`;
@@ -29,6 +29,10 @@ test("real auth adapter enforces private owner sessions", async t => {
   await db.user.createMany({ data: [
     { id: ownerId, name: "Owner fixture", email: ownerEmail, emailVerified: true },
     { id: outsiderId, name: "Other fixture", email: `other-${fixture}@example.test`, emailVerified: true },
+  ] });
+  await db.account.createMany({ data: [
+    { id: randomUUID(), userId: ownerId, providerId: "google", accountId: `google-owner-${fixture}` },
+    { id: randomUUID(), userId: outsiderId, providerId: "google", accountId: `google-other-${fixture}` },
   ] });
   const auth = getAuth();
   const context = await auth.$context;
@@ -42,38 +46,37 @@ test("real auth adapter enforces private owner sessions", async t => {
   const owner = await sessionHeaders(ownerId);
 
   await t.test("a verified owner session resolves through the Prisma adapter", async () => {
-    assert.deepEqual(await requireOwner(new Headers(owner.headers)), { ownerId, sessionId: owner.session.id, name: "Owner fixture" });
+    assert.deepEqual(await requireUser(new Headers(owner.headers)), { ownerId, sessionId: owner.session.id, name: "Owner fixture" });
   });
   await t.test("missing and tampered signed sessions are rejected", async () => {
-    await assert.rejects(requireOwner(new Headers()), { code: "SIGN_IN_REQUIRED" });
+    await assert.rejects(requireUser(new Headers()), { code: "SIGN_IN_REQUIRED" });
     const tampered = new Headers(owner.headers);
     tampered.set("cookie", `${context.authCookies.sessionToken.name}=invalid-session.invalid-signature`);
-    await assert.rejects(requireOwner(tampered), { code: "SIGN_IN_REQUIRED" });
+    await assert.rejects(requireUser(tampered), { code: "SIGN_IN_REQUIRED" });
   });
-  await t.test("a valid session belonging to another user cannot read owner data", async () => {
+  await t.test("another verified Google account resolves to its own user", async () => {
     const outsider = await sessionHeaders(outsiderId);
-    await assert.rejects(requireOwner(outsider.headers), { code: "OWNER_ONLY" });
+    assert.equal((await requireUser(outsider.headers)).ownerId, outsiderId);
   });
   await t.test("the owner's email must remain verified", async () => {
     await db.user.update({ where: { id: ownerId }, data: { emailVerified: false } });
-    try { await assert.rejects(requireOwner(new Headers(owner.headers)), { code: "OWNER_ONLY" }); }
+    try { await assert.rejects(requireUser(new Headers(owner.headers)), { code: "AUTH_METHOD_REQUIRED" }); }
     finally { await db.user.update({ where: { id: ownerId }, data: { emailVerified: true } }); }
   });
-  await t.test("Google subject pinning requires the exact linked owner account", async () => {
-    process.env.OWNER_GOOGLE_SUB = "fixture-trusted-subject";
-    try {
-      await assert.rejects(requireOwner(new Headers(owner.headers)), { code: "OWNER_ONLY" });
-      await db.account.create({ data: { id: randomUUID(), userId: ownerId, providerId: "google", accountId: "fixture-trusted-subject" } });
-      assert.equal((await requireOwner(new Headers(owner.headers))).ownerId, ownerId);
-    } finally { delete process.env.OWNER_GOOGLE_SUB; }
+  await t.test("Google mode requires an account linked to that user", async () => {
+    await db.account.deleteMany({ where: { userId: outsiderId, providerId: "google" } });
+    const outsider = await sessionHeaders(outsiderId);
+    await assert.rejects(requireUser(outsider.headers), { code: "AUTH_METHOD_REQUIRED" });
+    await db.account.create({ data: { id: randomUUID(), userId: outsiderId, providerId: "google", accountId: `restored-${fixture}` } });
+    assert.equal((await requireUser(outsider.headers)).ownerId, outsiderId);
   });
   await t.test("expired sessions cannot authenticate", async () => {
     const expired = await sessionHeaders(ownerId, new Date(0));
-    await assert.rejects(requireOwner(expired.headers), { code: "SIGN_IN_REQUIRED" });
+    await assert.rejects(requireUser(expired.headers), { code: "SIGN_IN_REQUIRED" });
   });
   await t.test("sign-out revokes the saved session", async () => {
     await auth.api.signOut({ headers: new Headers(owner.headers) });
     assert.equal(await db.session.count({ where: { id: owner.session.id } }), 0);
-    await assert.rejects(requireOwner(new Headers(owner.headers)), { code: "SIGN_IN_REQUIRED" });
+    await assert.rejects(requireUser(new Headers(owner.headers)), { code: "SIGN_IN_REQUIRED" });
   });
 });

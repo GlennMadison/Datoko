@@ -67,6 +67,15 @@ model Verification {
   @@map("verifications")
 }
 
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+  @@index([lastRequest])
+  @@map("auth_rate_limits")
+}
+
 model Shop {
   id             String   @id @default(cuid())
   ownerId        String

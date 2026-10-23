@@ -6,7 +6,7 @@ For example, Rp1,000,000 of source revenue and Rp100,000 of advertising spend gi
 
 ## Source availability
 
-This connection does not yet have a verified automatic Shopee Ads attribution adapter. Use the owner-only normalized JSON import. It is an input format, not a claim that Shopee exports this exact JSON. Transform the source advertising report into this format while preserving its attribution window, revenue basis, timestamps, and conversion identities. If the provider exposes only aggregate metrics, import those with completeness false: Original ROAS is available, while Real ROAS stays unavailable.
+This connection does not yet have a verified automatic Shopee Ads attribution adapter. Use the private normalized JSON import for your own shops. It is an input format, not a claim that Shopee exports this exact JSON. Transform the source advertising report into this format while preserving its attribution window, revenue basis, timestamps, and conversion identities. If the provider exposes only aggregate metrics, import those with completeness false: Original ROAS is available, while Real ROAS stays unavailable.
 
 Uploads are explicitly labeled Imported source reports. The server can validate arithmetic, identities, stored orders, known return evidence, and freshness. It cannot establish the truth or completeness of an uploaded source report. Set completeness true only when the underlying source supports it. Reimport updated outcomes when late returns or other order updates occur.
 

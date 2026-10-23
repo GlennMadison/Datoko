@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireOwner } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { advertisementForOwner, getAdvertisementData, adReportFilters } from "@/server/ads";
 import { isDemo } from "@/server/env";
 import { resolveReportPeriod, type ReportQuery } from "@/core/reporting-period";
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
-    const actor = isDemo() ? null : await requireOwner(request.headers);
+    const actor = isDemo() ? null : await requireUser(request.headers);
     const query: ReportQuery = {};
     for (const key of request.nextUrl.searchParams.keys()) { const values = request.nextUrl.searchParams.getAll(key); if (values.length !== 1) throw new AppError("INVALID_REPORT_FILTER", 400); query[key] = values[0]; }
     const period = resolveReportPeriod(query);

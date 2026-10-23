@@ -10,7 +10,7 @@ const schema = z.object({
   EMAIL_SIGNUP_ENABLED: z.enum(["true", "false"]).default("true"),
   DATABASE_URL: z.string().optional(), DATABASE_SSL_CA: z.string().optional(), BETTER_AUTH_SECRET: z.string().optional(),
   GOOGLE_CLIENT_ID: z.string().optional(), GOOGLE_CLIENT_SECRET: z.string().optional(),
-  OWNER_EMAIL: z.string().optional(), OWNER_GOOGLE_SUB: z.string().optional(), TOKEN_ENCRYPTION_KEY: z.string().optional(),
+  TOKEN_ENCRYPTION_KEY: z.string().optional(),
   SHOPEE_ENV: z.enum(["sandbox", "production"]).default("sandbox"),
   SHOPEE_PARTNER_ID: z.string().optional(), SHOPEE_PARTNER_KEY: z.string().optional(),
   SHOPEE_ALLOWED_SHOP_IDS: z.string().default(""), SHOPEE_REDIRECT_URI: z.string().optional(),
@@ -23,12 +23,12 @@ const schema = z.object({
 
 export const getConfig = () => schema.parse(process.env);
 export const isDemo = () => getConfig().DATOKO_MODE === "demo";
-const LOGIN_KEYS = ["DATABASE_URL", "BETTER_AUTH_SECRET", "OWNER_EMAIL"] as const;
+const LOGIN_KEYS = ["DATABASE_URL", "BETTER_AUTH_SECRET"] as const;
 
 export function loginMissing(): string[] {
   const config = getConfig();
   const missing: string[] = LOGIN_KEYS.filter(key => !config[key]?.trim());
-  if (config.OWNER_EMAIL?.trim() && !z.email().safeParse(config.OWNER_EMAIL.trim()).success) missing.push("OWNER_EMAIL");
+
   if (config.AUTH_METHOD === "google") {
     for (const key of ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"] as const) if (!config[key]?.trim()) missing.push(key);
   }

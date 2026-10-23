@@ -17,6 +17,8 @@ export async function beginConnection(actor: { ownerId: string; sessionId: strin
   externalId(expectedShopId);
   const allowed = config.SHOPEE_ALLOWED_SHOP_IDS.split(",").map(value => value.trim());
   if (!allowed.includes(expectedShopId)) throw new AppError("SHOP_NOT_ALLOWED", 403);
+  const existing = await getDb().shop.findUnique({ where: { environment_sourceShopId: { environment: partner.environment, sourceShopId: expectedShopId } }, select: { ownerId: true } });
+  if (existing && existing.ownerId !== actor.ownerId) throw new AppError("SHOP_OWNER_MISMATCH", 409);
   const state = randomSecret();
   const browserSecret = randomSecret();
   const now = new Date();

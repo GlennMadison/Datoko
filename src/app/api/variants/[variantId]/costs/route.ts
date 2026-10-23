@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
-import { requireOwner } from "@/server/auth";
+import { requireUser } from "@/server/auth";
 import { getDb } from "@/server/db";
 import { assertSameOrigin } from "@/core/security";
 import { amountUnits } from "@/core/money";
@@ -13,7 +13,7 @@ export async function POST(request: Request, context: { params: Promise<{ varian
   try {
     const config = getConfig();
     assertSameOrigin(request.headers.get("origin"), config.APP_BASE_URL);
-    const actor = await requireOwner(request.headers);
+    const actor = await requireUser(request.headers);
     const { variantId } = await context.params;
     const form = await request.formData();
     const input = z.object({ amount: z.string().regex(/^\d{1,16}(?:\.\d{1,4})?$/), note: z.string().max(500) }).parse({ amount: form.get("amount"), note: form.get("note") ?? "" });

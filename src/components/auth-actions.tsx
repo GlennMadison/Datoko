@@ -8,7 +8,7 @@ const authClient = createAuthClient();
 
 function passwordError(code: string | undefined, signUp: boolean) {
   if (code === "INVALID_EMAIL_OR_PASSWORD") return "The email or password is incorrect.";
-  if (code === "OWNER_ONLY") return "Signup is restricted to the workspace owner.";
+  if (code === "AUTH_METHOD_REQUIRED") return "Use the configured sign-in method for this account.";
   if (code === "USER_ALREADY_EXISTS" || code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL") return "An account already exists for this email. Sign in instead.";
   if (code === "PASSWORD_TOO_SHORT") return "Use at least 12 characters for your password.";
   if (code === "PASSWORD_TOO_LONG") return "Use no more than 128 characters for your password.";

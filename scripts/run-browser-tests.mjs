@@ -18,9 +18,10 @@ if (auth) {
     AUTH_E2E_OWNER_EMAIL: env.AUTH_E2E_OWNER_EMAIL ?? `auth-browser-${randomUUID()}@example.test`,
     APP_BASE_URL: "https://127.0.0.1:3101", BETTER_AUTH_URL: "https://127.0.0.1:3101",
     BETTER_AUTH_SECRET: "auth-browser-fixture-secret-more-than-32-characters",
-    GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "", OWNER_GOOGLE_SUB: "",
+    GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "",
   });
-  env.OWNER_EMAIL = env.AUTH_E2E_OWNER_EMAIL;
+  delete env.OWNER_EMAIL;
+  delete env.OWNER_GOOGLE_SUB;
   certificateDir = await mkdtemp(join(tmpdir(), "Datoko-browser-tls-"));
   env.DATOKO_TEST_TLS_KEY = join(certificateDir, "key.pem"); env.DATOKO_TEST_TLS_CERT = join(certificateDir, "cert.pem");
   const windowsOpenSSL = "C:/Program Files/Git/mingw64/bin/openssl.exe";

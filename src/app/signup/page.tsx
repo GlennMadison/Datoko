@@ -13,7 +13,7 @@ export default function Signup() {
     <p className="eyebrow">YOUR PRIVATE WORKSPACE</p><h1>Create your account.</h1>
     <p>Set up your email and password to keep your shop&apos;s records close.</p>
     <PasswordForm disabled={!configured} signUp/>
-    <small>Signup is available to the workspace owner.</small>
+    <small>Your account has its own private workspace.</small>
     <Link className="auth-secondary" href="/login">Already have an account? Sign in</Link>
     {!configured && <Link className="auth-secondary" href="/setup">View setup requirements</Link>}
   </div></div>;
