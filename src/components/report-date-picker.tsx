@@ -1,5 +1,11 @@
 "use client";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+
+import { useEffect, useId, useState } from "react";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Button } from "./ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { dayStart, resolveReportPeriod, type ReportPeriod } from "@/core/reporting-period";
 import { useReportNavigation } from "./report-navigation";
 
@@ -23,8 +29,6 @@ function selectionTitle(period: ReportPeriod) {
 
 export function ReportDatePicker({ period, onSelect }: { period: ReportPeriod; onSelect: (patch: Record<string, string>) => boolean }) {
   const id = useId();
-  const popup = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
   const { getQuery } = useReportNavigation();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>("day");
@@ -34,27 +38,12 @@ export function ReportDatePicker({ period, onSelect }: { period: ReportPeriod; o
   const [to, setTo] = useState(period.to);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
-  const [position, setPosition] = useState({ left: 16, top: 16 });
   const currentYear = Number(period.today.slice(0, 4));
   const years = Array.from({ length: currentYear - 1999 }, (_, index) => currentYear - index);
   const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const offset = (new Date(Date.UTC(year, month - 1, 1)).getUTCDay() + 6) % 7;
 
   useEffect(() => { setFrom(period.from); setTo(period.to); setDirty(false); setError(""); }, [period.from, period.to, period.preset]);
-  useLayoutEffect(() => {
-    if (!open) return;
-    function place() {
-      const rect = trigger.current?.getBoundingClientRect();
-      const height = popup.current?.getBoundingClientRect().height;
-      if (!rect || !height) return;
-      const width = Math.min(480, window.innerWidth - 32);
-      setPosition({ left: Math.max(16, Math.min(rect.left, window.innerWidth - width - 16)), top: rect.bottom + 8 + height <= window.innerHeight - 16 ? rect.bottom + 8 : Math.max(16, rect.top - height - 8) });
-    }
-    place();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place);
-    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place); };
-  }, [open, view, year, month, period.from, period.to]);
   useEffect(() => {
     if (!dirty || view !== "custom") return;
     if (!from || !to) { setError("Choose both dates."); return; }
@@ -65,43 +54,39 @@ export function ReportDatePicker({ period, onSelect }: { period: ReportPeriod; o
     return () => clearTimeout(timer);
   }, [from, to, dirty, view, period.today, onSelect]);
 
-  function prepareOpen() {
-    if (open) return;
+  function prepareOpen(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (!nextOpen) return;
     let active = period;
-    try { active = resolveReportPeriod(Object.fromEntries(new URLSearchParams(getQuery()))); } catch { /* Use the displayed safe period for an invalid URL. */ }
+    try { active = resolveReportPeriod(Object.fromEntries(new URLSearchParams(getQuery()))); } catch { /* Keep the safe displayed period for invalid URLs. */ }
     setYear(active.year); setMonth(active.month); setError("");
     setView(active.week ? "week" : active.preset === "month" || active.preset === "this-month" ? "month" : "day");
-    const rect = trigger.current?.getBoundingClientRect();
-    if (!rect) return;
-    const height = Math.min(440, window.innerHeight - 32);
-    const width = Math.min(480, window.innerWidth - 32);
-    setPosition({ left: Math.max(16, Math.min(rect.left, window.innerWidth - width - 16)), top: rect.bottom + 8 + height <= window.innerHeight - 16 ? rect.bottom + 8 : Math.max(16, rect.top - height - 8) });
   }
   function choose(patch: Record<string, string>) {
     setDirty(false); setError("");
-    if (onSelect(patch)) { popup.current?.hidePopover(); trigger.current?.focus(); }
+    if (onSelect(patch)) { setOpen(false); }
   }
   function changeView(next: View) { setView(next); setDirty(false); setError(""); }
 
   return <div className="report-date-field report-field">
     <span>Date range</span>
-    <button ref={trigger} type="button" className="date-picker-trigger" aria-label={`Date range: ${selectionTitle(period)}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} popoverTarget={id} onClick={prepareOpen}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6M17 2v6M3 11h18"/></svg>
-      <span>{selectionTitle(period)}</span><span className="date-picker-chevron" aria-hidden="true">⌄</span>
-    </button>
-    <div ref={popup} id={id} popover="auto" role="dialog" aria-label="Choose reporting dates" className="date-picker-popover" style={position} onToggle={event => setOpen(event.currentTarget.matches(":popover-open"))}>
+    <Popover open={open} onOpenChange={prepareOpen}>
+    <PopoverTrigger asChild><Button type="button" variant="outline" className="date-picker-trigger" aria-label={"Date range: " + selectionTitle(period)}>
+      <CalendarDays className="size-4 text-muted-foreground" aria-hidden="true"/><span>{selectionTitle(period)}</span><ChevronDown className="ml-auto size-3.5 text-muted-foreground" aria-hidden="true"/>
+    </Button></PopoverTrigger>
+    <PopoverContent id={id} role="dialog" aria-label="Choose reporting dates" className="date-picker-popover" align="start" sideOffset={8} collisionPadding={12}>
       <nav className="date-picker-shortcuts" aria-label="Date choices">
         <div className="date-picker-shortcut-list">{shortcuts.map(([key, label]) => <button key={key} type="button" aria-pressed={period.preset === key} onClick={() => choose({ preset: key })}>{label}</button>)}</div>
         <div className="date-picker-views">{views.map(([key, label]) => <button type="button" key={key} aria-pressed={view === key} onClick={() => changeView(key)}>{label}<span aria-hidden="true">›</span></button>)}</div>
       </nav>
       <div className="date-picker-calendar">
-        <div className="date-picker-panel-heading"><strong>{views.find(([key]) => key === view)?.[1]}</strong><button type="button" className="date-picker-close" aria-label="Close date picker" onClick={() => { popup.current?.hidePopover(); trigger.current?.focus(); }}>×</button></div>
+        <div className="date-picker-panel-heading"><strong>{views.find(([key]) => key === view)?.[1]}</strong><button type="button" className="date-picker-close" aria-label="Close date picker" onClick={() => setOpen(false)}><X className="size-3.5" aria-hidden="true"/></button></div>
         {view !== "year" && view !== "custom" && <div className="date-picker-year">
-          <button type="button" aria-label="Previous year" disabled={year === 2000} onClick={() => setYear(value => value - 1)}>‹</button>
-          <select aria-label="Reporting year" value={year} onChange={event => setYear(Number(event.target.value))}>{years.map(value => <option key={value}>{value}</option>)}</select>
-          <button type="button" aria-label="Next year" disabled={year === currentYear} onClick={() => setYear(value => value + 1)}>›</button>
+          <button type="button" aria-label="Previous year" disabled={year === 2000} onClick={() => setYear(value => value - 1)}><ChevronLeft className="size-4" aria-hidden="true"/></button>
+          <NativeSelect aria-label="Reporting year" value={year} onChange={event => setYear(Number(event.target.value))}>{years.map(value => <NativeSelectOption key={value}>{value}</NativeSelectOption>)}</NativeSelect>
+          <button type="button" aria-label="Next year" disabled={year === currentYear} onClick={() => setYear(value => value + 1)}><ChevronRight className="size-4" aria-hidden="true"/></button>
         </div>}
-        {(view === "day" || view === "week") && <select className="date-picker-month" aria-label="Reporting month" value={month} onChange={event => setMonth(Number(event.target.value))}>{months.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select>}
+        {(view === "day" || view === "week") && <NativeSelect className="date-picker-month" aria-label="Reporting month" value={month} onChange={event => setMonth(Number(event.target.value))}>{months.map((name, index) => <NativeSelectOption key={name} value={index + 1}>{name}</NativeSelectOption>)}</NativeSelect>}
         {view === "day" && <div className="date-picker-days" role="group" aria-label={`${months[month - 1]} ${year}`}>
           {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(day => <span key={day} className="date-picker-weekday">{day}</span>)}
           {Array.from({ length: offset }, (_, index) => <span key={`blank-${index}`} aria-hidden="true"/>)}
@@ -118,12 +103,12 @@ export function ReportDatePicker({ period, onSelect }: { period: ReportPeriod; o
         {view === "year" && <div className="date-picker-years" role="group" aria-label="Reporting years">{years.map(value => <button key={value} type="button" onClick={() => choose({ preset: "custom", from: `${value}-01-01`, to: value === currentYear ? period.today : `${value}-12-31` })}>{value}</button>)}</div>}
         {view === "custom" && <div className="date-picker-custom">
           <p>Choose dates. Valid changes update the report automatically.</p>
-          <label className="report-field">From<input aria-label="From date" aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} type="date" min="2000-01-01" max={period.today} value={from} onChange={event => { setFrom(event.target.value); setDirty(true); }}/></label>
-          <label className="report-field">To<input aria-label="To date" aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} type="date" min="2000-01-01" max={period.today} value={to} onChange={event => { setTo(event.target.value); setDirty(true); }}/></label>
+          <label className="report-field">From<Input aria-label="From date" aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} type="date" min="2000-01-01" max={period.today} value={from} onChange={event => { setFrom(event.target.value); setDirty(true); }}/></label>
+          <label className="report-field">To<Input aria-label="To date" aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} type="date" min="2000-01-01" max={period.today} value={to} onChange={event => { setTo(event.target.value); setDirty(true); }}/></label>
           {error && <p id={`${id}-error`} className="report-error" role="alert">{error}</p>}
         </div>}
         <p className="date-picker-timezone">All dates in Jakarta · WIB</p>
       </div>
-    </div>
+    </PopoverContent></Popover>
   </div>;
 }

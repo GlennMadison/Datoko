@@ -17,7 +17,7 @@ test("date presets, months, weeks and intervals reload automatically and survive
   await expect(page).toHaveURL(/preset=today/);
   await page.getByLabel("Graph interval").selectOption("3hour");
   await expect(page).toHaveURL(/interval=3hour/);
-  if (await page.getByRole("button", { name: /Menu/ }).isVisible()) await page.getByRole("button", { name: /Menu/ }).click();
+  if (!await page.getByRole("navigation", { name: "Main navigation" }).isVisible()) await page.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
   await page.getByRole("link", { name: "Advertisement", exact: true }).click();
   await expect(page).toHaveURL(/advertisement\?.*preset=today.*interval=3hour/);
   await expect(page.getByLabel("Graph interval")).toHaveValue("3hour");
@@ -35,7 +35,7 @@ test("date presets, months, weeks and intervals reload automatically and survive
   await expect(page.getByTestId("reporting-range")).toContainText("29 Feb 2024");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("calendar-filters.png"), fullPage: true });
-  if (await page.getByRole("button", { name: /Menu/ }).isVisible()) await page.getByRole("button", { name: /Menu/ }).click();
+  if (!await page.getByRole("navigation", { name: "Main navigation" }).isVisible()) await page.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
   await page.getByRole("link", { name: "Orders", exact: true }).click();
   await expect(page).toHaveURL(/orders\?.*week=4/);
   await expect(page.getByTestId("reporting-range")).toContainText("22 Feb 2024");
@@ -56,7 +56,7 @@ test("valid custom dates debounce automatically and invalid ranges retain the cu
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const validUrl = page.url();
   await page.getByLabel("From date").fill("2024-02-10");
-  await expect(page.getByRole("region", { name: "Reporting period" }).getByRole("alert")).toContainText("valid range");
+  await expect(page.getByRole("dialog", { name: "Choose reporting dates" }).getByRole("alert")).toContainText("valid range");
   expect(page.url()).toBe(validUrl);
   await chooseQuick(page, "Today");
   await expect(page).toHaveURL(/preset=today/);
@@ -75,7 +75,9 @@ test("quick successive choices settle on the newest range and interval", async (
 
 test("calendar selection, yearly reports, and keyboard dismissal work", async ({ page }) => {
   await page.goto("/overview?preset=month&year=2024&month=2&interval=auto");
-  await openDates(page);
+  const dateDialog = await openDates(page);
+  const bounds = await dateDialog.boundingBox();
+  expect(bounds!.width).toBeGreaterThanOrEqual(Math.min(450, page.viewportSize()!.width - 24));
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Choose reporting dates" })).not.toBeVisible();
   await expect(page.getByRole("button", { name: /^Date range:/ })).toBeFocused();

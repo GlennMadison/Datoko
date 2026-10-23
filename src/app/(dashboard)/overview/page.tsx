@@ -3,7 +3,7 @@ import { getDashboardData } from "@/server/dashboard";
 import { rupiah, number, timeLabel } from "@/lib/format";
 import { Card, EmptyState, PageHeading, Metric } from "@/components/ui";
 import { Icon } from "@/components/icons";
-import { ReportChart } from "@/components/report-chart";
+import { OverviewTrend } from "@/components/overview-trend";
 import { ReportingControls } from "@/components/reporting-controls";
 import { pageReportPeriod, type ReportQuery } from "@/core/reporting-period";
 import { OrderTable } from "@/components/order-table";
@@ -23,10 +23,10 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   return <>
     <AutoSync shopId={data.shop?.id} enabled={!demo && data.shop?.status === "CONNECTED"} lastSyncedAt={data.lastSyncedAt}/>
     <PageHeading title="Overview" actions={<SyncButton shopId={data.shop?.id} disabled={demo || data.shop?.status !== "CONNECTED"}/>}/>
-    <dl className="metrics-grid">{cards.map((card, index) => <Metric key={card.label} label={card.label} value={card.value} note={card.note} featured={index === 0}/>)}</dl>
+    <dl className="metrics-grid">{cards.map((card, index) => <Metric key={card.label} label={card.label} value={card.value} note={card.note} icon={card.icon} featured={index === 0}/>)}</dl>
     <ReportingControls period={period}/>
     <div className="analytics-grid">
-      <Card role="region" aria-label="Sales chart"><div className="card-heading report-chart-heading"><div><h2>Sales over time</h2><p>Completed merchandise by order creation date / IDR</p></div></div>{data.trend.length ? <ReportChart data={data.trend} series={[{ key: "sales", label: "Completed sales", color: "var(--chart-primary)" }]} label="Completed sales over time"/> : <EmptyState title="No sales in this period">Connect a shop or choose a different date range.</EmptyState>}</Card>
+      <Card role="region" aria-label="Sales chart">{data.trend.length ? <OverviewTrend data={data.trend}/> : <><div className="card-heading"><h2>Sales over time</h2></div><EmptyState title="No sales in this period">Connect a shop or choose a different date range.</EmptyState></>}</Card>
       <Card className="status-card"><div className="card-heading"><div><h2>Order status</h2></div></div><div className="status-total"><span>{number(data.metrics.orders)}</span><p>orders placed</p></div><div className="status-bar"><i style={{ width: `${data.metrics.orders ? data.metrics.completed / data.metrics.orders * 100 : 0}%` }}/><b style={{ width: `${data.metrics.orders ? data.metrics.cancelled / data.metrics.orders * 100 : 0}%` }}/></div><div className="status-legend"><div><span><i className="dot dot-green"/>Completed</span><strong>{number(data.metrics.completed)}</strong></div><div><span><i className="dot dot-orange"/>In progress</span><strong>{number(data.metrics.orders - data.metrics.completed - data.metrics.cancelled)}</strong></div><div><span><i className="dot dot-red"/>Cancelled</span><strong>{number(data.metrics.cancelled)}</strong></div></div><p className="status-footnote">Cancelled orders stay visible in your history.</p></Card>
     </div>
     <div className="lower-grid">

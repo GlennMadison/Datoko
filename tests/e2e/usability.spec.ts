@@ -3,12 +3,12 @@ import { test, expect } from "@playwright/test";
 test("mobile navigation supports Escape and closes after navigation", async ({ page, isMobile }) => {
   test.skip(!isMobile, "The disclosure menu is specific to mobile widths.");
   await page.goto("/overview");
-  const menu = page.locator(".mobile-menu");
+  const menu = page.getByRole("button", { name: "Toggle sidebar", exact: true });
   const navigation = page.getByRole("navigation", { name: "Main navigation" });
   await expect(navigation).not.toBeVisible();
   await menu.click();
   await expect(navigation).toBeVisible();
-  await menu.press("Escape");
+  await page.keyboard.press("Escape");
   await expect(menu).toHaveAttribute("aria-expanded", "false");
   await expect(menu).toBeFocused();
   await menu.click();

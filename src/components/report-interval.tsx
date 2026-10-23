@@ -1,4 +1,6 @@
 "use client";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+
 import { useEffect, useId, useState } from "react";
 import { resolveReportPeriod, type ReportPeriod } from "@/core/reporting-period";
 import { useReportNavigation } from "./report-navigation";
@@ -20,9 +22,9 @@ export function ReportIntervalControl({ period }: { period: ReportPeriod }) {
     update(changes, Boolean(period.error));
   }
   return <div className="graph-interval" aria-busy={pending}>
-    <label>Interval <select aria-label="Graph interval" value={period.interval} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} onChange={event => selectInterval(event.target.value)}>
-      {intervals.map(([value, label]) => <option key={value} value={value}>{value === "auto" ? `Auto (${intervals.find(([key]) => key === period.effectiveInterval)?.[1] ?? "Daily"})` : label}</option>)}
-    </select></label>
+    <label>Interval <NativeSelect aria-label="Graph interval" value={period.interval} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} onChange={event => selectInterval(event.target.value)}>
+      {intervals.map(([value, label]) => <NativeSelectOption key={value} value={value}>{value === "auto" ? `Auto (${intervals.find(([key]) => key === period.effectiveInterval)?.[1] ?? "Daily"})` : label}</NativeSelectOption>)}
+    </NativeSelect></label>
     {error && <p id={errorId} className="report-error" role="alert">{error}</p>}
   </div>;
 }
