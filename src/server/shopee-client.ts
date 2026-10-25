@@ -57,8 +57,14 @@ export class ShopeeClient {
     return z.array(object).parse(await this.request("/api/v2/ads/get_all_cpc_ads_hourly_performance", { accessToken, shopId, query: { performance_date: adsDate(date) } }));
   }
   async adsCampaigns(accessToken: string, shopId: string, offset: number) {
-    const raw = await this.call("/api/v2/ads/get_product_level_campaign_id_list", { accessToken, shopId, query: { ad_type: "all", offset: String(offset), limit: "100" } });
-    const parsed = z.object({ shop_id: z.union([z.string(), z.number()]), region: z.literal("ID"), has_next_page: z.boolean(), campaign_list: z.array(z.object({ campaign_id: z.union([z.string(), z.number()]) })) }).parse(raw);
+    const raw = await this.request("/api/v2/ads/get_product_level_campaign_id_list", { accessToken, shopId, query: { ad_type: "all", offset: String(offset), limit: "100" } });
+    const schema = z.object({ shop_id: z.union([z.string(), z.number()]), region: z.literal("ID"), has_next_page: z.boolean(), campaign_list: z.array(z.object({ campaign_id: z.union([z.string(), z.number()]) })) });
+    const checked = schema.safeParse(raw);
+    if (!checked.success) {
+      console.error(JSON.stringify({ event: "ads_campaign_response_invalid", keys: raw && typeof raw === "object" ? Object.keys(raw) : [], issues: checked.error.issues.map(i => ({ path: i.path.join("."), code: i.code, message: i.message })) }));
+      throw new AppError("INVALID_ADS_CAMPAIGN_RESPONSE", 502);
+    }
+    const parsed = checked.data;
     if (externalId(parsed.shop_id) !== shopId) throw new AppError("ADS_SOURCE_SHOP_MISMATCH", 502);
     return { more: parsed.has_next_page, ids: parsed.campaign_list.map(c => externalId(c.campaign_id)) };
   }
