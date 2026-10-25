@@ -9,6 +9,7 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
   const email = process.env.AUTH_E2E_OWNER_EMAIL!, shopId = randomUUID(), variantId = randomUUID(), orderId = randomUUID(), sourceShopId = String(Date.now());
   try {
     for (const path of ["report", "template", "order-items"]) expect((await request.get(`/api/advertisement/${path}`)).status()).toBe(401);
+    expect((await request.post("/api/advertisement/sync", { headers: { Origin: "https://127.0.0.1:3101" } })).status()).toBe(401);
     const signedUp = await page.request.post("/api/auth/sign-up/email", { headers: { Origin: "https://127.0.0.1:3101" }, data: { email, password: "ads-browser-password-2026", name: "Ads browser owner" } });
     expect(signedUp.ok()).toBe(true);
     const owner = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
@@ -36,12 +37,23 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
     await expect(page.getByTestId("real-roas")).toHaveText("0.00x");
     const data = await page.request.get("/api/advertisement/report?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
     expect((await data.json()).summary.excludedRevenue).toBe("1000000.0000");
+    await expect(page.getByRole("button", { name: "Sync ads", exact: true })).toBeDisabled();
+    await pool.query('INSERT INTO shop_connections (id,"shopId",status,version,"updatedAt") VALUES ($1,$2,\'CONNECTED\',1,now())', [randomUUID(), shopId]);
+    await page.reload();
+    const queuedResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/advertisement/sync" && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Sync ads", exact: true }).click();
+    expect((await queuedResponse).status()).toBe(202);
+    await expect(page.getByRole("button", { name: "Ads sync queued", exact: true })).toBeDisabled();
+    expect((await page.request.post("/api/advertisement/sync", { headers: { Origin: "https://outsider.example.test" } })).status()).toBe(403);
+    expect((await pool.query('SELECT count(*)::int AS total FROM sync_states WHERE "shopId"=$1 AND resource=\'ads-request\'', [shopId])).rows[0].total).toBe(1);
   } finally {
     await pool.query('DELETE FROM ad_report_buckets WHERE "datasetId" IN (SELECT id FROM ad_datasets WHERE "shopId"=$1)', [shopId]);
     await pool.query('DELETE FROM ad_datasets WHERE "shopId"=$1', [shopId]);
     await pool.query('DELETE FROM order_items WHERE "orderId"=$1', [orderId]);
     await pool.query('DELETE FROM orders WHERE id=$1', [orderId]);
     await pool.query('DELETE FROM product_variants WHERE id=$1', [variantId]);
+    await pool.query('DELETE FROM sync_states WHERE "shopId"=$1', [shopId]);
+    await pool.query('DELETE FROM shop_connections WHERE "shopId"=$1', [shopId]);
     await pool.query('DELETE FROM shops WHERE id=$1', [shopId]);
     await pool.query('DELETE FROM users WHERE email=$1', [email]);
     await pool.end();
