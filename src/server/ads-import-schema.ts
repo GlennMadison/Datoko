@@ -14,7 +14,7 @@ const allocation = z.object({
   confirmedRefund: money, provisional: z.boolean(), returnReferences: z.array(id).max(30),
 }).strict();
 export const adSourceMetricsSchema = z.object({
-  directRevenue: money.optional(), advertisedItemIds: z.array(z.string().regex(/^\\d{1,20}$/)).max(5000).optional(),
+  directRevenue: money.optional(), advertisedItemIds: z.array(z.string().regex(/^\d{1,20}$/)).max(5000).optional(),
 }).strict();
 const row = z.object({
   campaignKey: id, campaignName: text, grain: z.enum(["DAY", "HOUR"]),

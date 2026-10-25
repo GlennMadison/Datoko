@@ -122,3 +122,9 @@ test("campaign product settings preserve stable IDs and validate shop and campai
   response.campaign_list[0].campaign_id = "999";
   await assert.rejects(client.adsCampaignSettings("test-token", "123", ["987"]), /INVALID_ADS_SOURCE_CAMPAIGN/);
 });
+
+test("campaign product metadata survives the import boundary", () => {
+  const [row] = normalizeCampaignAds([{shop_id:"123",region:"ID",campaign_list:[{campaign_id:"987",metrics_list:[metric]}]}], "123", ["987"], range, new Map([["987", ["9007199254740993"]]]));
+  const checked = validateAdImport({ version: 1, sourceShopId: "123", environment: "production", datasetKey: "shopee-api-test", datasetName: "Test", basis: "PLACED_TOTAL", reports: [row] }, now);
+  assert.deepEqual(checked.reports[0].sourceMetrics, { directRevenue: "90000.0000", advertisedItemIds: ["9007199254740993"] });
+});
