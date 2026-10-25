@@ -12,7 +12,8 @@ export function FinanceSyncButton({ shopId, orderSn, disabled = false }: { shopI
     try {
       const response = await fetch(`/api/shops/${encodeURIComponent(shopId)}/finance`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orderSn }) });
       const result = await response.json();
-      if (!response.ok || result.lastError) setMessage(result.lastError === "SHOPEE_PERMISSION_DENIED" ? "Shopee has not granted payment access. Check your app permissions." : "Some payouts could not be refreshed. Try again shortly.");
+      if (response.status === 409 && result.error === "SHOP_JOB_BUSY") setMessage("Payout refresh is already running. The totals will update when it finishes.");
+      else if (!response.ok || result.lastError) setMessage(result.lastError === "SHOPEE_PERMISSION_DENIED" ? "Shopee has not granted payment access. Check your app permissions." : "Some payouts could not be refreshed. Try again shortly.");
       else setMessage(`${result.synced} order payouts refreshed.`);
       router.refresh();
     } catch { setMessage("Could not refresh payouts. Try again."); }
