@@ -94,6 +94,7 @@ test("payment timestamps distinguish paid, unpaid and unknown without guessing",
   const paid = normalizeOrder({ ...source, pay_time: 1792065700 });
   assert.equal(paid.paymentStatus, "PAID"); assert.equal(paid.paidAt?.getTime(), 1792065700000);
   assert.equal(normalizeOrder({ ...source, pay_time: 0 }).paymentStatus, "UNPAID");
+  assert.equal(normalizeOrder({ ...source, pay_time: null }).paymentStatus, "UNPAID");
   assert.equal(normalizeOrder(source).paymentStatus, "UNKNOWN");
   assert.throws(() => normalizeOrder({ ...source, pay_time: -1 }));
 });

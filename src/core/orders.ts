@@ -57,7 +57,7 @@ export function normalizeOrder(raw: unknown): NormalizedOrder {
   const payTime = source.pay_time;
   if (payTime != null && (typeof payTime !== "number" || !Number.isSafeInteger(payTime) || payTime < 0)) throw new AppError("INVALID_SOURCE_TIMESTAMP", 502);
   const paidAt = typeof payTime === "number" && payTime > 0 ? timestamp(payTime) : null;
-  const paymentStatus = paidAt ? "PAID" : payTime === 0 ? "UNPAID" : "UNKNOWN";
+  const paymentStatus = paidAt ? "PAID" : (payTime === 0 || payTime === null) ? "UNPAID" : "UNKNOWN";
   const merchandise = items.reduce((sum, item) => sum + amountUnits(item.paidUnitPrice) * BigInt(item.quantity), 0n);
   return { orderSn: source.order_sn, status: source.order_status, paymentStatus, paidAt, cancelReason: typeof source.cancel_reason === "string" ? source.cancel_reason : null, currency: "IDR", totalAmount: money(source.total_amount), merchandiseAmount: amountString(merchandise), createdAt: timestamp(source.create_time), updatedAt: timestamp(source.update_time), items };
 }

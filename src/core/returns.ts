@@ -16,3 +16,28 @@ export function normalizeReturn(raw: unknown): NormalizedReturn {
   }
   return { returnSn: value.return_sn as string, orderSn: value.order_sn as string, status: value.status, reportedAmount, confirmedRefund: value.status === "ACCEPTED" ? reportedAmount : null, updatedAt: new Date(value.update_time * 1000) };
 }
+
+// Shopee page_no is an entry offset (starting at zero), not a page number.
+export async function importReturnWindow<T extends { return_sn?: unknown }>(options: {
+  page: (offset: number) => Promise<{ more: boolean; returns: T[] }>;
+  save: (value: T) => Promise<void>;
+  shouldPause?: () => boolean;
+}) {
+  let processed = 0, offset = 0;
+  const seen = new Set<string>();
+  for (;;) {
+    if (options.shouldPause?.()) return { processed, paused: true };
+    if (offset >= 50_000) throw new AppError("RETURN_PAGE_LIMIT", 502);
+    const result = await options.page(offset);
+    for (const value of result.returns) {
+      if (options.shouldPause?.()) return { processed, paused: true };
+      if (typeof value.return_sn !== "string" || seen.has(value.return_sn)) throw new AppError("REPEATED_SOURCE_RETURN", 502);
+      seen.add(value.return_sn);
+      await options.save(value);
+      processed++;
+    }
+    if (!result.more) return { processed, paused: false };
+    if (!result.returns.length) throw new AppError("MISSING_RETURN_PAGE", 502);
+    offset += result.returns.length;
+  }
+}

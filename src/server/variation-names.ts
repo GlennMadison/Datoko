@@ -29,7 +29,7 @@ export async function syncVariationNames(shopId: string, generation: number, con
           const connection = await tx.$queryRaw<{ version: number; status: string }[]>`SELECT version, status FROM shop_connections WHERE "shopId" = ${shopId} FOR SHARE`;
           if (connection[0]?.version !== generation || connection[0]?.status !== "CONNECTED") throw new AppError("CONNECTION_CHANGED", 409);
           const order = await tx.order.findUniqueOrThrow({ where: { shopId_orderSn: { shopId, orderSn: source.orderSn } } });
-          if (source.paymentStatus !== "UNKNOWN") await tx.order.update({ where: { id: order.id }, data: { paymentStatus: source.paymentStatus, paidAt: source.paidAt, cancelReason: source.cancelReason } });
+          await tx.order.update({ where: { id: order.id }, data: { ...(source.paymentStatus !== "UNKNOWN" ? { paymentStatus: source.paymentStatus, paidAt: source.paidAt } : {}), ...(source.cancelReason ? { cancelReason: source.cancelReason } : {}) } });
           let count = 0;
           for (const item of source.items) {
             if (!item.variationName) continue;

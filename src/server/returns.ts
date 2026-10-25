@@ -2,7 +2,7 @@ import { getDb } from "./db.ts";
 import { accessForShop, withShopLock } from "./connections.ts";
 import { ShopeeClient } from "./shopee-client.ts";
 import { getConfig, partnerConfig } from "./env.ts";
-import { normalizeReturn } from "../core/returns.ts";
+import { normalizeReturn, importReturnWindow } from "../core/returns.ts";
 import { AppError, publicErrorCode } from "../core/errors.ts";
 import { initialCoverageFrom, syncWindows } from "../core/sync.ts";
 
@@ -26,16 +26,11 @@ export async function syncShopReturns(shopId: string, generation: number, contro
     try {
       const windows = syncWindows({ checkpoint: state.checkpoint, coverageFrom: state.coverageFrom!, now, maxWindowDays: 7, historyDays: config.SHOPEE_HISTORY_DAYS });
       for (const window of windows) {
-        let page = 1;
-        const seen = new Set<string>();
-        for (;;) {
-          if (controls.shouldPause?.()) return { processed, paused: true };
-          if (page > 1000) throw new AppError("RETURN_PAGE_LIMIT", 502);
-          const result = await read((token, sourceId) => client.returnList(token, sourceId, window.from, window.to, page));
-          for (const summary of result.returns) {
-            const returnSn = summary.return_sn;
-            if (typeof returnSn !== "string" || seen.has(returnSn)) throw new AppError("REPEATED_SOURCE_RETURN", 502);
-            seen.add(returnSn);
+        const result = await importReturnWindow({
+          shouldPause: controls.shouldPause,
+          page: offset => read((token, sourceId) => client.returnList(token, sourceId, window.from, window.to, offset)),
+          save: async summary => {
+            const returnSn = summary.return_sn as string;
             const raw = await read((token, sourceId) => client.returnDetail(token, sourceId, returnSn));
             const source = normalizeReturn(raw);
             if (source.returnSn !== returnSn) throw new AppError("RETURN_ID_MISMATCH", 502);
@@ -49,14 +44,13 @@ export async function syncShopReturns(shopId: string, generation: number, contro
               const values = { status: source.status, reportedAmount: source.reportedAmount, confirmedRefund: source.confirmedRefund, sourceUpdatedAt: source.updatedAt, observedAt: new Date() };
               await tx.returnCase.upsert({ where: { shopId_returnSn: { shopId, returnSn } }, create: { shopId, orderId: order.id, returnSn, ...values }, update: values });
             });
-            processed++;
-          }
-          if (!result.more) break;
-          if (!result.returns.length) throw new AppError("MISSING_RETURN_PAGE", 502);
-          page++;
-        }
-        await db.syncState.update({ where: { id: state.id }, data: { checkpoint: window.to, lastSuccessAt: new Date(), lastErrorCode: null } });
+          },
+        });
+        processed += result.processed;
+        if (result.paused) return { processed, paused: true };
+        await db.syncState.update({ where: { id: state.id }, data: { checkpoint: window.to } });
       }
+      await db.syncState.update({ where: { id: state.id }, data: { lastSuccessAt: new Date(), lastErrorCode: null } });
       return { processed, paused: false };
     } catch (error) {
       await db.syncState.update({ where: { id: state.id }, data: { lastErrorCode: publicErrorCode(error) } });
