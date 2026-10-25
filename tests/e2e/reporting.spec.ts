@@ -97,7 +97,7 @@ test("calendar selection, yearly reports, and keyboard dismissal work", async ({
   await expect(picker).not.toBeVisible();
 });
 
-test("sample ads reconcile to item adjustments and expose a read-only import", async ({ page, request }, testInfo) => {
+test("advertising summary contains six metrics and omits the removed sections", async ({ page, request }, testInfo) => {
   const response = await request.get("/api/advertisement/report?preset=last7&interval=day");
   expect(response.status()).toBe(200);
   expect(response.headers()["cache-control"]).toContain("no-store");
@@ -107,8 +107,13 @@ test("sample ads reconcile to item adjustments and expose a read-only import", a
   const hourly = (await (await request.get("/api/advertisement/report?preset=last7&interval=hour")).json()).summary;
   expect([hourly.spend, hourly.originalRevenue, hourly.retainedRevenue]).toEqual([result.spend, result.originalRevenue, result.retainedRevenue]);
   await page.goto("/advertisement?preset=last7&interval=day");
-  await expect(page.getByTestId("real-roas")).toHaveText(`${result.realRoas}x`);
-  await expect(page.getByRole("button", { name: "Import report", exact: true })).toBeDisabled();
+  await expect(page.getByTestId("original-roas")).toHaveText(`${result.originalRoas}x`);
+  await expect(page.locator('dl[aria-label="Advertising summary"] dt')).toHaveText(["Ad Spend", "Original ROAS", "Estimated Adjusted ROAS", "Original Revenue", "Estimated Revenue", "Cancelled, Unpaid & Refunded Revenue"]);
+  await expect(page.getByTestId("real-roas")).toHaveCount(0);
+  for (const name of ["Attributed items and adjustments", "Import an advertising report", "Estimated adjusted ROAS"]) await expect(page.getByRole("heading", { name, exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Import report", exact: true })).toHaveCount(0);
+  await expect(page.getByText("How Real ROAS is calculated", { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("advertisement.png"), fullPage: true });
   const crossSite = await request.post("/api/advertisement/import", { headers: { Origin: "https://outsider.example.test" }, data: {} });
   expect(crossSite.status()).toBe(403);
@@ -123,6 +128,6 @@ test("reporting panels remain visible when a browser hides advertising placement
   // display the owner's reporting data, rather than advertising placements.
   await page.addStyleTag({ content: ".ad-section { display: none !important; }" });
   await expect(page.getByRole("heading", { name: "Campaign performance", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Attributed items and adjustments", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Import report", exact: true })).toBeVisible();
+  await expect(page.getByTestId("estimated-roas")).toBeVisible();
+  await expect(page.getByRole("region", { name: "ROAS chart", exact: true })).toBeVisible();
 });
