@@ -8,6 +8,14 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
   const pool = new Pool({ connectionString: databaseUrl });
   const email = process.env.AUTH_E2E_OWNER_EMAIL!, shopId = randomUUID(), variantId = randomUUID(), orderId = randomUUID(), sourceShopId = String(Date.now());
   try {
+    // Reproduce the standard cosmetic rule without disabling browser protections.
+    await page.addInitScript(() => {
+      document.addEventListener("DOMContentLoaded", () => {
+        const style = document.createElement("style");
+        style.textContent = ".ad-section { display: none !important; }";
+        document.head.append(style);
+      });
+    });
     for (const path of ["report", "template", "order-items"]) expect((await request.get(`/api/advertisement/${path}`)).status()).toBe(401);
     expect((await request.post("/api/advertisement/sync", { headers: { Origin: "https://127.0.0.1:3101" } })).status()).toBe(401);
     const signedUp = await page.request.post("/api/auth/sign-up/email", { headers: { Origin: "https://127.0.0.1:3101" }, data: { email, password: "ads-browser-password-2026", name: "Ads browser owner" } });
@@ -53,6 +61,9 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
     await pool.query(`INSERT INTO ad_report_revisions (id,"reportId",digest,"sourceAsOf","importedBy",payload) VALUES ($1,$2,'estimate-fixture',now(),$3,$4::jsonb)`, [randomUUID(), automaticBucket, owner.id, JSON.stringify({ sourceMetrics: { directRevenue: "1000000", advertisedItemIds: ["1"] } })]);
     for (const resource of ["orders", "returns"]) await pool.query(`INSERT INTO sync_states (id,"shopId",resource,"coverageFrom","lastSuccessAt","updatedAt") VALUES ($1,$2,$3,'2026-09-01',now(),now())`, [randomUUID(), shopId, resource]);
     await page.goto("/advertisement?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
+    await expect(page.getByRole("region", { name: "Estimated adjusted ROAS", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Campaign performance", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ads sync queued", exact: true })).toBeVisible();
     await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
     await pool.query(`UPDATE orders SET status='UNPAID',"paymentStatus"='UNPAID' WHERE id=$1`, [orderId]);
     await page.reload();

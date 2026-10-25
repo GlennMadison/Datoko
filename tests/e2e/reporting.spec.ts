@@ -116,3 +116,13 @@ test("sample ads reconcile to item adjustments and expose a read-only import", a
     expect((await request.get(`/api/advertisement/report?${query}`)).status()).toBe(400);
   }
 });
+
+test("reporting panels remain visible when a browser hides advertising placements", async ({ page }) => {
+  await page.goto("/advertisement?preset=last7&interval=day");
+  // Brave's first-party cosmetic list contains ##.ad-section. These panels
+  // display the owner's reporting data, rather than advertising placements.
+  await page.addStyleTag({ content: ".ad-section { display: none !important; }" });
+  await expect(page.getByRole("heading", { name: "Campaign performance", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Attributed items and adjustments", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Import report", exact: true })).toBeVisible();
+});

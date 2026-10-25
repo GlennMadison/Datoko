@@ -264,7 +264,7 @@
   .ad-filters [data-slot="native-select-wrapper"] { width: 100%; }
   .ad-basis { @apply mb-5 text-[11px] text-muted-foreground; overflow-wrap: anywhere; }
   .ad-quality ul { @apply mt-2 list-inside list-disc space-y-1; }
-  .ad-section { @apply mt-5; }
+  .report-section { @apply mt-5; }
   .ad-import { @apply px-5 pb-5; }
   .ad-import > label { @apply mb-3 block text-xs font-medium; }
   .ad-import > div { @apply flex flex-wrap items-center gap-3; }
