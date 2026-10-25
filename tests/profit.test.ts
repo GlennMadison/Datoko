@@ -5,19 +5,19 @@ import { normalizeSettlement, calculateOrderProfit, readSettlement } from "../sr
 function income(payout: string, extra: Record<string, unknown> = {}) {
   return normalizeSettlement({ order_sn: "order1", order_income: { escrow_amount: payout, ...extra } }, "order1");
 }
-const order = (cost: string | null = "26850", quantity = 1, status = "COMPLETED", costQuality = "BIGSELLER_HISTORICAL") => ({ status, items: [{ costSnapshot: cost, quantity, costQuality }] });
+const order = (cost: string | null = "26000", quantity = 1, status = "COMPLETED", costQuality = "BIGSELLER_HISTORICAL") => ({ status, items: [{ costSnapshot: cost, quantity, costQuality }] });
 
-test("BigSeller settled MR4 profit matches exactly without double deducting fees", () => {
-  const settlement = income("96330", { commission_fee: "10710", service_fee: "10115", seller_order_processing_fee: "1845" });
-  assert.equal(calculateOrderProfit(order(), settlement).profit, "69480.0000");
+test("settled profit uses provider payout without double deducting fees", () => {
+  const settlement = income("95000", { commission_fee: "10000", service_fee: "9000", seller_order_processing_fee: "2000" });
+  assert.equal(calculateOrderProfit(order(), settlement).profit, "69000.0000");
   assert.equal(calculateOrderProfit(order(), settlement).quality, "SETTLED");
 });
-test("BigSeller MR3, Polytron and Huawei reference profits match", () => {
-  for (const [payout, cost, expected] of [["110335", "24500", "85835.0000"], ["103315", "22990", "80325.0000"], ["27101", "7240", "19861.0000"]]) assert.equal(calculateOrderProfit(order(cost), income(payout)).profit, expected);
+test("separate orders use their own payouts and cost snapshots", () => {
+  for (const [payout, cost, expected] of [["110000", "24000", "86000.0000"], ["103000", "23000", "80000.0000"], ["27000", "7000", "20000.0000"]]) assert.equal(calculateOrderProfit(order(cost), income(payout)).profit, expected);
 });
 test("quantity and fractional IDR remain exact", () => {
-  const result = calculateOrderProfit(order("8553.6", 4), income("82000.1234"));
-  assert.equal(result.cogs, "34214.4000"); assert.equal(result.profit, "47785.7234");
+  const result = calculateOrderProfit(order("8123.45", 4), income("82000.1234"));
+  assert.equal(result.cogs, "32493.8000"); assert.equal(result.profit, "49506.3234");
 });
 test("refunds, affiliate fees and negative adjustments are included only once", () => {
   const settlement = income("100000", { escrow_amount_after_adjustment: "70000", seller_return_refund: "-30000", order_ams_commission_fee: "5000" });
