@@ -4,7 +4,7 @@ import { Pool } from "pg";
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || !new URL(databaseUrl).pathname.toLowerCase().includes("test")) throw new Error("Use a dedicated test database.");
-test("owner imports attributed sales, sees correct ROAS, and late cancellation restates it", async ({ page, request }) => {
+test("owner sees a compact summary and original-date payment and refund updates", async ({ page, request }) => {
   const pool = new Pool({ connectionString: databaseUrl });
   const email = process.env.AUTH_E2E_OWNER_EMAIL!, shopId = randomUUID(), variantId = randomUUID(), orderId = randomUUID(), sourceShopId = String(Date.now());
   try {
@@ -26,23 +26,24 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
     await pool.query('INSERT INTO orders (id,"shopId","orderSn",status,"paymentStatus","totalAmount","merchandiseAmount","sourceCreatedAt","sourceUpdatedAt") VALUES ($1,$2,\'ADS-BROWSER-ORDER\',\'COMPLETED\',\'PAID\',1000000,1000000,\'2026-10-01T08:00:00Z\',\'2026-10-01T09:00:00Z\')', [orderId, shopId]);
     await pool.query('INSERT INTO order_items (id,"orderId","sourceLineKey","variantId",name,quantity,"originalUnitPrice","paidUnitPrice") VALUES ($1,$2,\'line:1\',$3,\'Browser product\',1,1000000,1000000)', [randomUUID(), orderId, variantId]);
     await page.goto("/advertisement?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
-    await expect(page.getByTestId("real-roas")).toHaveText("Unavailable");
+    await expect(page.getByTestId("real-roas")).toHaveCount(0);
     const references = await page.request.get("/api/advertisement/order-items?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
     expect(references.status()).toBe(200);
     expect(references.headers()["cache-control"]).toContain("no-store");
     expect((await references.json()).items).toEqual([expect.objectContaining({ orderSn: "ADS-BROWSER-ORDER", lineKey: "line:1", merchandiseValue: "1000000.0000" })]);
     const report = { version: 1, sourceShopId, environment: "sandbox", datasetKey: "browser-source", datasetName: "Browser source report", basis: "PLACED_TOTAL", reports: [{ campaignKey: "shop", campaignName: "Shop total", grain: "DAY", start: "2026-10-01T00:00:00+07:00", end: "2026-10-02T00:00:00+07:00", sourceAsOf: "2026-10-02T10:00:00Z", spend: "100000", revenue: "1000000", attributionComplete: true, outcomesComplete: true, allocations: [{ key: "conversion-1", orderSn: "ADS-BROWSER-ORDER", lineKey: "line:1", amount: "1000000", disposition: "RETAINED", confirmedRefund: "300000", provisional: false, returnReferences: [] }] }] };
-    await page.getByLabel("Normalized ad report (.json)").setInputFiles({ name: "ads.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(report)) });
-    await page.getByRole("button", { name: "Import report", exact: true }).click();
+    const imported = await page.request.post("/api/advertisement/import", { headers: { Origin: "https://127.0.0.1:3101" }, data: report });
+    expect(imported.status()).toBe(200);
+    await page.reload();
     await expect(page.getByTestId("original-roas")).toHaveText("10.00x");
-    await expect(page.getByTestId("real-roas")).toHaveText("7.00x");
-    await expect(page.getByRole("link", { name: "ADS-BROWSER-ORDER", exact: true })).toBeVisible();
+    await expect(page.getByTestId("real-roas")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Import report", exact: true })).toHaveCount(0);
     const csrf = await page.request.post("/api/advertisement/import", { headers: { Origin: "https://outsider.example.test" }, data: report });
     expect(csrf.status()).toBe(403);
     await pool.query('UPDATE orders SET status=\'CANCELLED\',"sourceUpdatedAt"=\'2026-10-03T10:00:00Z\' WHERE id=$1', [orderId]);
     await page.reload();
     await expect(page.getByTestId("original-roas")).toHaveText("10.00x");
-    await expect(page.getByTestId("real-roas")).toHaveText("0.00x");
+    await expect(page.getByTestId("real-roas")).toHaveCount(0);
     const data = await page.request.get("/api/advertisement/report?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
     expect((await data.json()).summary.excludedRevenue).toBe("1000000.0000");
     await expect(page.getByRole("button", { name: "Sync ads", exact: true })).toBeDisabled();
@@ -61,7 +62,8 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
     await pool.query(`INSERT INTO ad_report_revisions (id,"reportId",digest,"sourceAsOf","importedBy",payload) VALUES ($1,$2,'estimate-fixture',now(),$3,$4::jsonb)`, [randomUUID(), automaticBucket, owner.id, JSON.stringify({ sourceMetrics: { directRevenue: "1000000", advertisedItemIds: ["1"] } })]);
     for (const resource of ["orders", "returns"]) await pool.query(`INSERT INTO sync_states (id,"shopId",resource,"coverageFrom","lastSuccessAt","updatedAt") VALUES ($1,$2,$3,'2026-09-01',now(),now())`, [randomUUID(), shopId, resource]);
     await page.goto("/advertisement?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
-    await expect(page.getByRole("region", { name: "Estimated adjusted ROAS", exact: true })).toBeVisible();
+    await expect(page.locator('dl[aria-label="Advertising summary"] .metric')).toHaveCount(6);
+    await expect(page.getByTestId("estimated-roas")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Campaign performance", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Ads sync queued", exact: true })).toBeVisible();
     await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
@@ -74,6 +76,8 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
     await pool.query(`INSERT INTO return_cases (id,"shopId","orderId","returnSn",status,"confirmedRefund","sourceUpdatedAt") VALUES ($1,$2,$3,'ADS-BROWSER-RETURN','ACCEPTED',300000,now())`, [randomUUID(), shopId, orderId]);
     await page.reload();
     await expect(page.getByTestId("estimated-roas")).toHaveText("7.00x");
+    await expect(page.getByTestId("estimated-revenue")).toContainText("700.000");
+    await expect(page.getByTestId("adjusted-outcomes-revenue")).toContainText("300.000");
     await expect(page.getByTestId("original-roas")).toHaveText("10.00x");
     await pool.query(`UPDATE return_cases SET "confirmedRefund"=1000000 WHERE "orderId"=$1`, [orderId]);
     await page.reload();

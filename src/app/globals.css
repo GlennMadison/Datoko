@@ -105,7 +105,6 @@
   .metrics-grid { @apply mb-6 grid grid-cols-4 gap-4; }
   .metric { min-width: 0; }
   .metric-value { overflow-wrap: anywhere; }
-  .ad-metrics { @apply grid-cols-3; }
   .analytics-grid, .lower-grid { display: grid; grid-template-columns: minmax(0, 2.3fr) minmax(265px, 1fr); gap: 20px; margin-bottom: 20px; }
   .card { min-width: 0; }
   .card-heading { @apply flex items-center justify-between gap-3 px-5 pt-5 pb-4; }
@@ -262,18 +261,6 @@
   .ad-filters { display: contents; }
   .ad-filters .report-field { flex: 1 1 175px; max-width: 280px; }
   .ad-filters [data-slot="native-select-wrapper"] { width: 100%; }
-  .ad-basis { @apply mb-5 text-[11px] text-muted-foreground; overflow-wrap: anywhere; }
-  .ad-quality ul { @apply mt-2 list-inside list-disc space-y-1; }
-  .report-section { @apply mt-5; }
-  .ad-import { @apply px-5 pb-5; }
-  .ad-import > label { @apply mb-3 block text-xs font-medium; }
-  .ad-import > div { @apply flex flex-wrap items-center gap-3; }
-  .ad-import input { @apply min-w-0 max-w-full text-xs; width: min(320px, 100%); }
-  .ad-import p { @apply mt-3 text-xs text-muted-foreground; }
-  .ad-import .report-error { color: var(--danger); }
-  .ad-method { @apply mt-5 border-t pt-5 text-xs text-muted-foreground; }
-  .ad-method summary { @apply font-medium text-foreground; }
-  .ad-method p { @apply mt-3 max-w-4xl; }
   .sync-action { position: relative; }
   .action-message { @apply absolute top-full right-0 z-30 mt-2 w-64 rounded-lg border bg-popover p-3 text-xs shadow-md; max-width: calc(100vw - 32px); }
   .theme-switcher { @apply relative inline-flex shrink-0 items-center text-muted-foreground; }
@@ -286,7 +273,6 @@
 
 @media (max-width: 1190px) {
   .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ad-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .analytics-grid, .lower-grid { grid-template-columns: minmax(0, 1fr); }
   .status-card { display: grid; grid-template-columns: 1fr 1fr; }
   .status-card .card-heading { grid-column: 1 / -1; }
@@ -296,7 +282,6 @@
 }
 @media (max-width: 900px) {
   .connection-grid, .detail-grid { grid-template-columns: minmax(0, 1fr); }
-  .ad-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .main-content { padding: 24px 16px 28px; }
@@ -339,3 +324,27 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+  .campaign-page { display: flex; flex-direction: column; gap: 24px; }
+  .campaign-page > .page-heading { align-items: center; flex-wrap: wrap; }
+  .campaign-page > .page-heading,
+  .campaign-page > .metrics-grid,
+  .campaign-page > .report-controls,
+  .campaign-page > .notice { margin-bottom: 0; }
+  .campaign-page .heading-actions { min-width: 0; max-width: 100%; }
+  .campaign-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .campaign-metrics .metric dt { min-height: 2.5em; line-height: 1.25; align-items: flex-start; }
+  .campaign-metrics .metric-value { font-size: clamp(18px, 2.3vw, 26px); white-space: nowrap; overflow-wrap: normal; }
+  .report-sync { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+  .report-sync .page-note { margin: 0; font-size: 11px; }
+  @media (max-width: 900px) {
+    .campaign-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 640px) {
+    .campaign-page { gap: 20px; }
+    .report-sync { justify-content: flex-start; }
+  }
+  @media (max-width: 380px) {
+    .campaign-metrics { grid-template-columns: minmax(0, 1fr); }
+    .campaign-metrics .metric-value { font-size: 22px; }
+  }

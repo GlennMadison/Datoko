@@ -25,8 +25,8 @@ export function AdsSyncControls({ connected, pending, intervalMinutes, lastSyncL
     } catch { setMessage("Could not queue ads sync. Check your shop connection and try again."); }
     finally { setBusy(false); }
   }
-  return <div className="sync-action">
-    <p className="page-note">{connected ? `Automatic sync every ${intervalMinutes} minutes. Last synced: ${lastSyncLabel}.` : "Connect your shop in Integrations to sync ads."}{pending && " Ads sync is queued."}</p>
+  return <div className="sync-action report-sync">
+    <p className="page-note" title={`Automatic sync every ${intervalMinutes} minutes`}>{connected ? `Synced: ${lastSyncLabel}` : "Connect your shop to sync ads."}</p>
     <Button className="button-outline" onClick={sync} disabled={!connected || busy || pending} aria-busy={busy}>
       <Icon name="sync" size={15}/>{busy ? "Queuing..." : pending ? "Ads sync queued" : "Sync ads"}
     </Button>
