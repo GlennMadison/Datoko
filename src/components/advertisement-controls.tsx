@@ -13,6 +13,7 @@ export function AdvertisementFilters({ datasets, dataset, campaigns, campaign }:
 }
 
 const messages: Record<string, string> = {
+  RESERVED_ADS_DATASET: "This report key is reserved for automatic Shopee sync. Use a separate key for an uploaded report.",
   INVALID_AD_REPORT: "The file does not match the report format.", ATTRIBUTION_TOTAL_MISMATCH: "Attributed item amounts do not reconcile with the report revenue.",
   DUPLICATE_ATTRIBUTION: "The report repeats an attribution. Check the source conversion keys.", STALE_ADS_REVISION: "An equal or newer report is already stored. Use its latest source timestamp.",
   WRONG_ADS_ENVIRONMENT: "This report belongs to another Shopee environment.", SHOP_NOT_FOUND: "The report's shop is not connected to this workspace.",

@@ -2,6 +2,7 @@ import { getDb } from "./db.ts";
 import { getConfig, isDemo } from "./env.ts";
 import { transactionLock } from "./queue.ts";
 import { requireDashboardUser, demoDashboard } from "./dashboard.ts";
+import { SHOPEE_ADS_DATASET, type AdsRow } from "../core/shopee-ads.ts";
 import { validateAdImport } from "./ads-import-schema.ts";
 import { attributionLineKey, calculateRoas, type AdSourceReport, type AttributionEvidence, type RoasResult } from "../core/ads-roas.ts";
 import { createTimeBuckets, dayStart, localDate, shiftDate, type ReportPeriod, type ReportQuery } from "../core/reporting-period.ts";
@@ -21,6 +22,16 @@ export function adReportFilters(query: ReportQuery): { dataset?: string; campaig
 }
 
 export async function importAdReport(ownerId: string, value: unknown, now = new Date()) {
+  const input = validateAdImport(value, now);
+  if (input.datasetKey.startsWith("shopee-api-")) throw new AppError("RESERVED_ADS_DATASET", 403);
+  return persistAdReport(ownerId, input, now);
+}
+export async function importSyncedAdReport(shop: { id: string; ownerId: string; sourceShopId: string }, generation: number, reports: AdsRow[], now: Date) {
+  if (!reports.length) return { imported: 0, unchanged: 0, datasetKey: SHOPEE_ADS_DATASET };
+  return persistAdReport(shop.ownerId, { version: 1, sourceShopId: shop.sourceShopId, environment: getConfig().SHOPEE_ENV,
+    datasetKey: SHOPEE_ADS_DATASET, datasetName: "Shopee Ads (automatic, 7-day total)", basis: "PLACED_TOTAL", reports }, now, { shopId: shop.id, generation });
+}
+async function persistAdReport(ownerId: string, value: unknown, now: Date, automatic?: { shopId: string; generation: number }) {
   if (isDemo()) throw new AppError("DEMO_READ_ONLY", 409);
   const input = validateAdImport(value, now);
   const config = getConfig();
@@ -29,16 +40,23 @@ export async function importAdReport(ownerId: string, value: unknown, now = new 
   const shop = await db.shop.findFirst({ where: { ownerId, sourceShopId: input.sourceShopId, environment: config.SHOPEE_ENV } });
   if (!shop) throw new AppError("SHOP_NOT_FOUND", 404);
   return db.$transaction(async tx => {
+    if (automatic) {
+      const current = await tx.$queryRaw<{ version: number; status: string }[]>`SELECT version, status FROM shop_connections WHERE "shopId" = ${shop.id} FOR SHARE`;
+      if (shop.id !== automatic.shopId || current[0]?.status !== "CONNECTED" || current[0]?.version !== automatic.generation) throw new AppError("CONNECTION_CHANGED", 409);
+    }
     await transactionLock(tx, `ad-import:${shop.id}:${input.datasetKey}`);
     const existing = await tx.adDataset.findUnique({ where: { shopId_sourceKey: { shopId: shop.id, sourceKey: input.datasetKey } } });
     if (existing && existing.basis !== input.basis) throw new AppError("ADS_BASIS_CHANGED", 409);
     const dataset = await tx.adDataset.upsert({ where: { shopId_sourceKey: { shopId: shop.id, sourceKey: input.datasetKey } }, create: { shopId: shop.id, sourceKey: input.datasetKey, name: input.datasetName, basis: input.basis }, update: { name: input.datasetName } });
     let imported = 0, unchanged = 0;
     for (const row of input.reports) {
-      const sourceDigest = digest(JSON.stringify(row));
+      const sourceDigest = digest(JSON.stringify(automatic ? { ...row, sourceAsOf: undefined } : row));
       const unique = { datasetId: dataset.id, campaignKey: row.campaignKey, grain: row.grain, startAt: new Date(row.start) };
       const previous = await tx.adReportBucket.findUnique({ where: { datasetId_campaignKey_grain_startAt: unique } });
-      if (previous?.sourceDigest === sourceDigest) { unchanged++; continue; }
+      if (previous?.sourceDigest === sourceDigest) {
+        if (automatic && previous.sourceAsOf < new Date(row.sourceAsOf)) await tx.adReportBucket.update({ where: { id: previous.id }, data: { sourceAsOf: new Date(row.sourceAsOf) } });
+        unchanged++; continue;
+      }
       if (previous && previous.sourceAsOf.getTime() >= Date.parse(row.sourceAsOf)) throw new AppError("STALE_ADS_REVISION", 409);
       // Conversion keys identify disjoint entitlements across the whole scope,
       // including periods outside the current dashboard selection.
@@ -64,6 +82,7 @@ export type AdvertisementData = {
   campaigns: { key: string; name: string; spend: string; originalRoas: string | null; realRoas: string | null }[];
   summary: RoasResult; points: { date: string; original: number | null; real: number | null; spend: number | null; revenue: number | null }[];
   coverage: { expected: number; available: number }; chartUnavailable: string | null;
+  sync?: { connected: boolean; lastSuccessAt: string | null; errorCode: string | null; hourlyErrorCode: string | null; campaignErrorCode: string | null; pending: boolean; intervalMinutes: number };
 };
 
 function sourceCoverage(reports: AdSourceReport[], period: ReportPeriod, grain: "DAY" | "HOUR") {
@@ -131,13 +150,19 @@ function demoAdvertisement(period: ReportPeriod, requestedCampaign?: string): Ad
 
 async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, period: ReportPeriod, filters: { dataset?: string; campaign?: string }): Promise<AdvertisementData> {
   await db.$executeRaw`SET TRANSACTION READ ONLY`;
-  const shop = await db.shop.findFirst({ where: { ownerId, environment: getConfig().SHOPEE_ENV } });
+  const shop = await db.shop.findFirst({ where: { ownerId, environment: getConfig().SHOPEE_ENV }, include: { connection: { select: { status: true } }, syncStates: true } });
+  const state = shop?.syncStates.find(s => s.resource === "ads");
+  const requestAt = shop?.syncStates.find(s => s.resource === "ads-request")?.checkpoint;
+  const sync: AdvertisementData["sync"] = { connected: shop?.connection?.status === "CONNECTED", lastSuccessAt: state?.lastSuccessAt?.toISOString() ?? null,
+    errorCode: state?.lastErrorCode ?? null, hourlyErrorCode: shop?.syncStates.find(s => s.resource === "ads-hourly")?.lastErrorCode ?? null,
+    campaignErrorCode: shop?.syncStates.find(s => s.resource === "ads-campaigns")?.lastErrorCode ?? null,
+    pending: !!requestAt && (!state || requestAt > state.updatedAt), intervalMinutes: getConfig().SYNC_INTERVAL_MINUTES };
   const datasets = shop ? await db.adDataset.findMany({ where: { shopId: shop.id }, orderBy: { createdAt: "asc" }, take: 101 }) : [];
   if (datasets.length > 100) throw new AppError("TOO_MANY_ADS_DATASETS", 400);
-  const dataset = datasets.find(row => row.sourceKey === filters.dataset) ?? datasets[0];
+  const dataset = datasets.find(row => row.sourceKey === filters.dataset) ?? datasets.find(row => row.sourceKey === SHOPEE_ADS_DATASET) ?? datasets[0];
   if (filters.dataset && !datasets.some(row => row.sourceKey === filters.dataset)) throw new AppError("INVALID_ADS_DATASET", 400);
   const metadata = datasets.map(row => ({ key: row.sourceKey, name: row.name, basis: row.basis }));
-  if (!dataset) return buildAdvertisementData(period, [], new Map(), metadata, null);
+  if (!dataset) return { ...buildAdvertisementData(period, [], new Map(), metadata, null), sync };
   const where = { datasetId: dataset.id, startAt: { gte: new Date(period.fromISO), lt: new Date(period.effectiveToISO) }, endAt: { lte: new Date(period.toISO) } };
   if (await db.adAttributionAllocation.count({ where: { report: where } }) > 50_000 || await db.adReportBucket.count({ where }) > 20_000) throw new AppError("REPORT_RANGE_TOO_LARGE", 400);
   const rows = await db.adReportBucket.findMany({ where, include: { allocations: true }, orderBy: { startAt: "asc" } });
@@ -162,7 +187,7 @@ async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, 
   const reports: StoredReport[] = rows.map(row => ({ key: row.id, campaignKey: row.campaignKey, campaignName: row.campaignName, grain: row.grain as "DAY" | "HOUR", start: row.startAt.toISOString(), end: row.endAt.toISOString(), spend: row.spend.toString(), revenue: row.revenue.toString(), sourceAsOf: row.sourceAsOf.toISOString(), attributionComplete: row.attributionComplete, outcomesComplete: row.outcomesComplete,
     allocations: row.allocations.map(a => ({ key: a.sourceKey, orderSn: a.orderSn, lineKey: a.sourceLineKey, amount: a.amount.toString(), disposition: a.disposition as "RETAINED" | "CANCELLED" | "RETURNED", confirmedRefund: a.confirmedRefund.toString(), provisional: a.provisional, returnReferences: a.returnReferences })),
   }));
-  return buildAdvertisementData(period, reports, evidence, metadata, dataset.sourceKey, filters.campaign);
+  return { ...buildAdvertisementData(period, reports, evidence, metadata, dataset.sourceKey, filters.campaign), sync };
 }
 
 export async function advertisementForOwner(ownerId: string, period: ReportPeriod, filters: { dataset?: string; campaign?: string } = {}): Promise<AdvertisementData> {

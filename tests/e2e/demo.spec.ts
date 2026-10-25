@@ -62,7 +62,8 @@ test("demo controls are read-only and unavailable integrations are labeled", asy
   await expect(page.getByRole("button", { name: "Connect Shopee" })).toBeDisabled();
   await expect(page.getByText("No live shop connected", { exact: true })).toBeVisible();
   await page.goto("/returns");
-  await expect(page.getByText("Live return sync is not yet enabled.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Return cases", exact: true })).toBeVisible();
+  await expect(page.getByText("Sample case", { exact: true })).toBeVisible();
   await page.goto("/login");
   await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeDisabled();
   await expect(page.getByLabel("Email", { exact: true })).toBeDisabled();
@@ -93,7 +94,7 @@ test("server rejects cross-site and demo mutations", async ({ request }) => {
     expect(crossSite.status()).toBe(403);
     expect(await crossSite.json()).toMatchObject({ error: "INVALID_ORIGIN" });
   }
-  for (const path of ["/api/integrations/shopee/connect", "/api/integrations/shopee/disconnect", "/api/shops/demo/sync", "/api/variants/sample-1/costs", "/api/advertisement/import"]) {
+  for (const path of ["/api/integrations/shopee/connect", "/api/integrations/shopee/disconnect", "/api/shops/demo/sync", "/api/variants/sample-1/costs", "/api/advertisement/import", "/api/advertisement/sync"]) {
     const response = await request.post(path, { headers: { Origin: "http://127.0.0.1:3100" }, form: { shopId: "123", amount: "100" }, maxRedirects: 0 });
     expect(response.status()).toBe(409);
     expect(await response.json()).toMatchObject({ error: "DEMO_READ_ONLY" });

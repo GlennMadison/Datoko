@@ -3,6 +3,8 @@ import { SHOPEE_HOSTS, signRequest, parseSourceJson, externalId, type PartnerCon
 import { AppError } from "../core/errors.ts";
 import type { TokenPair, ShopIdentity } from "../core/authorization.ts";
 
+import { adsDate } from "../core/shopee-ads.ts";
+
 const envelope = z.object({ error: z.unknown().optional(), request_id: z.string().optional(), response: z.unknown().optional() }).passthrough();
 const object = z.record(z.string(), z.unknown());
 
@@ -16,7 +18,7 @@ export class ShopeeClient {
   private readonly config: PartnerConfig;
   constructor(config: PartnerConfig) { this.config = config; }
 
-  async call(path: string, input: { accessToken?: string; shopId?: string; query?: Record<string, string>; body?: Record<string, unknown> } = {}): Promise<Record<string, unknown>> {
+  private async request(path: string, input: { accessToken?: string; shopId?: string; query?: Record<string, string>; body?: Record<string, unknown> } = {}): Promise<unknown> {
     const timestamp = Math.floor(Date.now() / 1000);
     const url = new URL(path, SHOPEE_HOSTS[this.config.environment]);
     url.search = new URLSearchParams({ partner_id: this.config.partnerId, timestamp: String(timestamp), sign: signRequest({ ...this.config, path, timestamp, accessToken: input.accessToken, shopId: input.shopId }), ...input.query }).toString();
@@ -27,17 +29,41 @@ export class ShopeeClient {
       response = await fetch(url, { method: input.body ? "POST" : "GET", headers: input.body ? { "Content-Type": "application/json" } : undefined, body: input.body ? JSON.stringify(input.body) : undefined, signal: AbortSignal.timeout(20_000), cache: "no-store", redirect: "error" });
     } catch { throw new AppError("SHOPEE_REQUEST_UNCERTAIN", 502); }
     if (response.status === 429) throw new AppError("SHOPEE_RATE_LIMIT", 429);
+    if (response.status === 403) throw new AppError("SHOPEE_PERMISSION_DENIED", 403);
     if (!response.ok) throw new AppError("SHOPEE_HTTP_ERROR", 502);
     const parsed = envelope.safeParse(parseSourceJson(await response.text()));
     if (!parsed.success) throw new AppError("INVALID_SHOPEE_RESPONSE", 502);
     if (parsed.data.error) {
       const code = String(parsed.data.error);
+      if (/rate_limit/.test(code)) throw new AppError("SHOPEE_RATE_LIMIT", 429);
       if (/access_token|invalid_acce|invalid_token|token_expired/.test(code)) throw new AppError("SHOPEE_ACCESS_EXPIRED", 401);
       if (/refresh_token|invalid_refresh/.test(code)) throw new AppError("SHOPEE_RECONNECT_REQUIRED", 401);
-      if (/permission|no_auth|no_permission/.test(code)) throw new AppError("SHOPEE_PERMISSION_DENIED", 403);
+      if (/permission|no_auth|no_permission/.test(code) || /permission|not authorized|not authorised|no access/i.test(String(parsed.data.message ?? ""))) throw new AppError("SHOPEE_PERMISSION_DENIED", 403);
+      if (path.startsWith("/api/v2/ads/") && /^[a-zA-Z0-9_.-]{1,100}$/.test(code)) console.error(JSON.stringify({ event: "shopee_ads_api_error", path, providerCode: code }));
       throw new AppError("SHOPEE_API_ERROR", 502);
     }
-    return object.parse(parsed.data.response ?? parsed.data);
+    if (path.startsWith("/api/v2/ads/") && parsed.data.warning) throw new AppError("SHOPEE_ADS_WARNING", 502);
+    return parsed.data.response ?? parsed.data;
+  }
+
+
+  async call(path: string, input: { accessToken?: string; shopId?: string; query?: Record<string, string>; body?: Record<string, unknown> } = {}): Promise<Record<string, unknown>> {
+    return object.parse(await this.request(path, input));
+  }
+  async adsDaily(accessToken: string, shopId: string, from: string, to: string) {
+    return z.array(object).parse(await this.request("/api/v2/ads/get_all_cpc_ads_daily_performance", { accessToken, shopId, query: { start_date: adsDate(from), end_date: adsDate(to) } }));
+  }
+  async adsHourly(accessToken: string, shopId: string, date: string) {
+    return z.array(object).parse(await this.request("/api/v2/ads/get_all_cpc_ads_hourly_performance", { accessToken, shopId, query: { performance_date: adsDate(date) } }));
+  }
+  async adsCampaigns(accessToken: string, shopId: string, offset: number) {
+    const raw = await this.call("/api/v2/ads/get_product_level_campaign_id_list", { accessToken, shopId, query: { ad_type: "all", offset: String(offset), limit: "100" } });
+    const parsed = z.object({ shop_id: z.union([z.string(), z.number()]), region: z.literal("ID"), has_next_page: z.boolean(), campaign_list: z.array(z.object({ campaign_id: z.union([z.string(), z.number()]) })) }).parse(raw);
+    if (externalId(parsed.shop_id) !== shopId) throw new AppError("ADS_SOURCE_SHOP_MISMATCH", 502);
+    return { more: parsed.has_next_page, ids: parsed.campaign_list.map(c => externalId(c.campaign_id)) };
+  }
+  async adsCampaignDaily(accessToken: string, shopId: string, from: string, to: string, ids: string[]) {
+    return z.array(object).parse(await this.request("/api/v2/ads/get_product_campaign_daily_performance", { accessToken, shopId, query: { start_date: adsDate(from), end_date: adsDate(to), campaign_id_list: ids.join(",") } }));
   }
 
   private tokenPair(raw: Record<string, unknown>): TokenPair {
