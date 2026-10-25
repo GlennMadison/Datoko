@@ -69,7 +69,16 @@ export class ShopeeClient {
     return { more: parsed.has_next_page, ids: parsed.campaign_list.map(c => externalId(c.campaign_id)) };
   }
   async adsCampaignDaily(accessToken: string, shopId: string, from: string, to: string, ids: string[]) {
-    return z.array(object).parse(await this.request("/api/v2/ads/get_product_campaign_daily_performance", { accessToken, shopId, query: { start_date: adsDate(from), end_date: adsDate(to), campaign_id_list: ids.join(",") } }));
+    const path = "/api/v2/ads/get_product_campaign_daily_performance";
+    const raw = await this.request(path, { accessToken, shopId, query: { start_date: adsDate(from), end_date: adsDate(to), campaign_id_list: ids.join(",") } });
+    // Shopee versions use either a single shop object or a list of shops.
+    // Membership and region are checked again by normalizeCampaignAds.
+    const shape = z.union([z.array(object), z.object({ shop_id: z.union([z.string(), z.number()]), region: z.string(), campaign_list: z.array(object) }).passthrough()]).safeParse(raw);
+    if (!shape.success) {
+      console.error(JSON.stringify({ event: "ads_campaign_performance_invalid", keys: raw && typeof raw === "object" ? Object.keys(raw) : [], issues: shape.error.issues.map(i => ({ path: i.path.join("."), code: i.code })) }));
+      throw new AppError("INVALID_ADS_CAMPAIGN_RESPONSE", 502);
+    }
+    return Array.isArray(shape.data) ? shape.data : [shape.data];
   }
 
   private tokenPair(raw: Record<string, unknown>): TokenPair {

@@ -32,7 +32,8 @@ test("separate accounts keep shop data and mutations private", async ({ page, br
       await pages[index].goto("/orders");
       await expect(pages[index].getByRole("link", { name: products[index], exact: true })).toBeVisible();
       await expect(pages[index].getByRole("link", { name: products[1 - index], exact: true })).toHaveCount(0);
-      await expect(pages[index].locator(".owner strong")).toHaveText(names[index]);
+      if (!await pages[index].getByText(names[index], { exact: true }).isVisible()) await pages[index].getByRole("button", { name: "Toggle sidebar", exact: true }).click();
+      await expect(pages[index].getByText(names[index], { exact: true })).toBeVisible();
     }
     const headers = { Origin: baseURL! };
     expect((await page.request.post(`/api/shops/${shopIds[1]}/sync`, { headers })).status()).toBe(404);

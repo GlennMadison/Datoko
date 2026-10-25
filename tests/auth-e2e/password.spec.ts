@@ -30,6 +30,7 @@ test("signup, login, validation, and logout work without Google", async ({ page 
   await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page).toHaveURL(/\/overview$/);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  if (!await page.getByRole("button", { name: "Sign out", exact: true }).isVisible()) await page.getByRole("button", { name: "Toggle sidebar", exact: true }).click();
   await page.getByRole("button", { name: "Sign out", exact: true }).filter({ visible: true }).click();
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/overview");

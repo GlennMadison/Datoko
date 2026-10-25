@@ -62,7 +62,7 @@ export async function syncShopAds(shopId: string, generation: number, controls: 
         if (code === "ADS_SYNC_PAUSED") return false;
         if (code === "CONNECTION_CHANGED") throw error;
         await mark(resource, code);
-        console.error(JSON.stringify({ event: "ads_sync_failed", resource, code }));
+        console.error(JSON.stringify({ event: "ads_sync_failed", resource, code, errorType: error instanceof Error ? error.name : "unknown" }));
         failed++; return false;
       }
     };

@@ -94,3 +94,13 @@ test("ads API permission, throttling and incomplete reports surface actionable e
   payload={error:"error_auth",message:"No permission to call this API"};
   await assert.rejects(client.adsDaily("test-token","123",range.from,range.to),/SHOPEE_PERMISSION_DENIED/);
 });
+test("campaign performance accepts shop-object and shop-list responses without mixing scopes", async t => {
+  let response: unknown = {shop_id:"123",region:"ID",campaign_list:[{campaign_id:"987",ad_name:"MR4",metrics_list:[metric]}]};
+  t.mock.method(globalThis,"fetch",async()=>new Response(JSON.stringify({error:"",response})));
+  const single = await client.adsCampaignDaily("test-token","123",range.from,range.to,["987"]);
+  assert.equal(normalizeCampaignAds(single,"123",["987"],range)[0].campaignKey,"campaign:987");
+  response = [response];
+  assert.deepEqual(await client.adsCampaignDaily("test-token","123",range.from,range.to,["987"]), single);
+  response = {unexpected:[]};
+  await assert.rejects(client.adsCampaignDaily("test-token","123",range.from,range.to,["987"]), /INVALID_ADS_CAMPAIGN_RESPONSE/);
+});
