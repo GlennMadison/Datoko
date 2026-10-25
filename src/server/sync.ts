@@ -1,3 +1,4 @@
+import { syncShopFinance } from "./finance.ts";
 import { getDb } from "./db.ts";
 import { getConfig, partnerConfig } from "./env.ts";
 import { accessForShop, withShopLock } from "./connections.ts";
@@ -23,7 +24,7 @@ async function saveOrder(shopId: string, generation: number, source: NormalizedO
       const variant = await tx.productVariant.upsert({ where: { shopId_sourceItemId_sourceModelId: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId } }, create: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId, name: item.name, sku: item.sku }, update: { name: item.name, sku: item.sku } });
       const cost = await tx.skuCostVersion.findFirst({ where: { variantId: variant.id, effectiveAt: { lte: source.createdAt } }, orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }] });
       const existingItem = await tx.orderItem.findUnique({ where: { orderId_sourceLineKey: { orderId: order.id, sourceLineKey: item.lineKey } } });
-      if (!existingItem) await tx.orderItem.create({ data: { orderId: order.id, sourceLineKey: item.lineKey, variantId: variant.id, name: item.name, sku: item.sku, quantity: item.quantity, originalUnitPrice: item.originalUnitPrice, paidUnitPrice: item.paidUnitPrice, costSnapshot: cost?.amount ?? null, costVersionId: cost?.id ?? null, costQuality: cost ? "HISTORICAL_INPUT" : "MISSING" } });
+      if (!existingItem) await tx.orderItem.create({ data: { orderId: order.id, sourceLineKey: item.lineKey, variantId: variant.id, name: item.name, sku: item.sku, quantity: item.quantity, originalUnitPrice: item.originalUnitPrice, paidUnitPrice: item.paidUnitPrice, costSnapshot: cost?.amount ?? null, costVersionId: cost?.id ?? null, costQuality: cost ? (cost.note?.startsWith("[Historical baseline]") ? "HISTORICAL_BASELINE" : "HISTORICAL_INPUT") : "MISSING" } });
       // Checkout and cost snapshots are intentionally immutable on replay.
     }
   });
@@ -84,6 +85,12 @@ export async function runShopSync(job: SyncJob, controls: { shouldPause?: () => 
           return { windows: windows.slice(index).map(range => ({ from: range.from.toISOString(), to: range.to.toISOString() })), progress: error.progress };
         }
         await db.syncRun.update({ where: { id: job.runId }, data: { processed } });
+      }
+      // Settlement refresh is independent: unavailable payment permissions must
+      // not undo a successful order import. Each tick fills another bounded batch.
+      if (!controls.shouldPause?.()) {
+        try { await syncShopFinance(job.shopId, job.generation, { shouldPause: controls.shouldPause, limit: 25 }); }
+        catch (error) { console.error(JSON.stringify({ event: "finance_sync_failed", code: publicErrorCode(error) })); }
       }
       const completed = await db.syncRun.updateMany({ where: { id: job.runId, status: "RUNNING", shop: { connection: { version: job.generation, status: "CONNECTED" } } }, data: { status: "SUCCEEDED", processed, finishedAt: new Date() } });
       if (!completed.count) await db.syncRun.updateMany({ where: { id: job.runId, status: "RUNNING" }, data: { status: "CANCELLED", errorCode: "CONNECTION_CHANGED", finishedAt: new Date() } });

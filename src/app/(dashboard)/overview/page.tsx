@@ -1,3 +1,4 @@
+import { FinanceSyncButton } from "@/components/finance-sync-button";
 import { ReportLink } from "@/components/report-link";
 import { getDashboardData } from "@/server/dashboard";
 import { rupiah, number, timeLabel } from "@/lib/format";
@@ -16,14 +17,15 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const cards = [
     { label: "Completed sales", value: rupiah(data.metrics.sales), note: "Merchandise before refunds and fees", icon: "money" },
     { label: "Orders placed", value: number(data.metrics.orders), note: `${data.metrics.completed} completed / ${data.metrics.cancelled} cancelled`, icon: "orders" },
-    { label: "Estimated contribution", value: rupiah(data.metrics.profit), note: "Waiting for settlement and cost data", icon: "products" },
+    { label: "Net profit", value: rupiah(data.metrics.profit), note: data.profitSummary ? `${data.profitSummary.covered} / ${data.profitSummary.eligible} completed orders · ${data.profitSummary.estimated ? "includes estimated costs" : "after COGS and Shopee deductions"}` : "Waiting for payouts and COGS", icon: "products" },
     { label: "Confirmed refunds", value: rupiah(data.metrics.refunds), note: demo ? "Sample refunds updated in this period" : "Complete financial coverage is not verified", icon: "returns" },
   ];
   const topProducts = [...data.products].sort((a, b) => b.units - a.units).slice(0, 4);
   return <>
     <AutoSync shopId={data.shop?.id} enabled={!demo && data.shop?.status === "CONNECTED"} lastSyncedAt={data.lastSyncedAt}/>
-    <PageHeading title="Overview" actions={<SyncButton shopId={data.shop?.id} disabled={demo || data.shop?.status !== "CONNECTED"}/>}/>
+    <PageHeading title="Overview" actions={<div className="flex flex-wrap items-start gap-2">{data.shop && <FinanceSyncButton shopId={data.shop.id} disabled={demo || data.shop.status !== "CONNECTED"}/>}<SyncButton shopId={data.shop?.id} disabled={demo || data.shop?.status !== "CONNECTED"}/></div>}/>
     <dl className="metrics-grid">{cards.map((card, index) => <Metric key={card.label} label={card.label} value={card.value} note={card.note} icon={card.icon} featured={index === 0}/>)}</dl>
+    {data.profitSummary && <p className="mb-5 text-xs text-muted-foreground">Net profit = Shopee payout − recorded COGS. Payout already includes Shopee fees, affiliate commissions, refunds and adjustments. Advertising spend is separate.{data.profitSummary.covered < data.profitSummary.eligible ? " Orders missing costs or payouts are excluded from this subtotal." : ""}{data.profitSummary.error ? " Some payouts are awaiting refresh." : ""}</p>}
     <ReportingControls period={period}/>
     <div className="analytics-grid">
       <Card role="region" aria-label="Sales chart">{data.trend.length ? <OverviewTrend data={data.trend}/> : <><div className="card-heading"><h2>Sales over time</h2></div><EmptyState title="No sales in this period">Connect a shop or choose a different date range.</EmptyState></>}</Card>
@@ -33,6 +35,6 @@ export default async function Overview({ searchParams }: { searchParams: Promise
       <Card className="orders-card"><div className="card-heading"><div><h2>Recent orders</h2></div><ReportLink href="/orders" className="text-link">View all <Icon name="arrow" size={14}/></ReportLink></div><OrderTable orders={data.orders.slice(0, 5)}/></Card>
       <Card className="product-ranking"><div className="card-heading"><div><h2>Top products</h2><p>By completed units in the selected period</p></div></div>{data.products.length ? topProducts.map((product, index) => <div className="rank-row" key={product.id}><span className="rank-number">0{index + 1}</span><div className="rank-detail"><strong>{product.name}</strong><span>{product.variants.length} {product.variants.length === 1 ? "variation" : "variations"}</span></div><strong className="rank-units">{product.units}<small>sold</small></strong></div>) : <EmptyState title="No completed product sales">Products appear here when completed orders fall within this period.</EmptyState>}<ReportLink href="/products" className="ranking-link">Manage product costs <Icon name="arrow" size={14}/></ReportLink></Card>
     </div>
-    <div className="freshness"><span><Icon name="clock" size={14}/>{demo ? "Sample data for preview" : `Orders last synced: ${timeLabel(data.lastSyncedAt)}`}</span><span>Returns and settlement coverage is not yet verified.</span></div>
+    <div className="freshness"><span><Icon name="clock" size={14}/>{demo ? "Sample data for preview" : `Orders last synced: ${timeLabel(data.lastSyncedAt)}`}</span><span>Payouts last refreshed: {timeLabel(data.profitSummary?.lastSyncedAt ?? null)}</span></div>
   </>;
 }

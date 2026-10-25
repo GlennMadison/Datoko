@@ -59,6 +59,9 @@ export class ShopeeClient {
     // omits shop_id from its response. The ID was already checked against our allowlist.
     return { shopId: raw.shop_id ? externalId(raw.shop_id) : shopId, name: z.string().min(1).parse(raw.shop_name), currency: "IDR" };
   }
+  async escrowDetail(accessToken: string, shopId: string, orderSn: string) {
+    return this.call("/api/v2/payment/get_escrow_detail", { accessToken, shopId, query: { order_sn: orderSn } });
+  }
   async orderList(accessToken: string, shopId: string, from: Date, to: Date, cursor: string | null) {
     const raw = await this.call("/api/v2/order/get_order_list", { accessToken, shopId, query: { time_range_field: "update_time", time_from: String(Math.floor(from.getTime() / 1000)), time_to: String(Math.floor(to.getTime() / 1000)), page_size: "50", ...(cursor ? { cursor } : {}) } });
     const parsed = z.object({ order_list: z.array(z.object({ order_sn: z.string() })), more: z.boolean(), next_cursor: z.string().optional() }).parse(raw);
