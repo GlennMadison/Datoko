@@ -4,7 +4,7 @@ import { groupProducts, type ProductVariantRow } from "../src/core/products.ts";
 
 const variant = (overrides: Partial<ProductVariantRow> = {}): ProductVariantRow => ({
   id: "v1", shopId: "shop1", sourceItemId: "100", sourceModelId: "1",
-  name: "Old speaker title", nameObservedAt: "2026-10-01T00:00:00.000Z",
+  name: "Old speaker title", variationName: null, nameObservedAt: "2026-10-01T00:00:00.000Z",
   sku: "SPEAKER", cost: 40000, units: 3, ...overrides,
 });
 

@@ -3,8 +3,8 @@ import { amountString, amountUnits } from "./money.ts";
 import { externalId } from "./shopee.ts";
 import { digest } from "./security.ts";
 
-export type NormalizedItem = { lineKey: string; itemId: string; modelId: string; name: string; sku: string | null; quantity: number; originalUnitPrice: string; paidUnitPrice: string };
-export type NormalizedOrder = { orderSn: string; status: string; currency: string; totalAmount: string; merchandiseAmount: string; createdAt: Date; updatedAt: Date; items: NormalizedItem[] };
+export type NormalizedItem = { lineKey: string; itemId: string; modelId: string; name: string; variationName: string | null; sku: string | null; quantity: number; originalUnitPrice: string; paidUnitPrice: string };
+export type NormalizedOrder = { orderSn: string; status: string; paymentStatus: "PAID" | "UNPAID" | "UNKNOWN"; paidAt: Date | null; cancelReason: string | null; currency: string; totalAmount: string; merchandiseAmount: string; createdAt: Date; updatedAt: Date; items: NormalizedItem[] };
 
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new AppError("INVALID_SOURCE_ORDER", 502);
@@ -39,7 +39,7 @@ export function normalizeOrder(raw: unknown): NormalizedOrder {
     const composite = digest(JSON.stringify(identity));
     const qualifiedComposite = digest(JSON.stringify([...identity, item.main_item ?? ""]));
     if (explicitLine) lineCounts.set(explicitLine, (lineCounts.get(explicitLine) ?? 0) + 1);
-    return { explicitLine, composite, qualifiedComposite, itemId, modelId, name: String(item.item_name ?? "Unnamed item"), sku: String(item.model_sku || item.item_sku || "") || null, quantity, originalUnitPrice: money(item.model_original_price), paidUnitPrice: money(item.model_discounted_price) };
+    return { explicitLine, composite, qualifiedComposite, itemId, modelId, name: String(item.item_name ?? "Unnamed item"), variationName: typeof item.model_name === "string" ? item.model_name.trim() || null : null, sku: String(item.model_sku || item.item_sku || "") || null, quantity, originalUnitPrice: money(item.model_original_price), paidUnitPrice: money(item.model_discounted_price) };
   });
   const used = new Set<string>();
   const items = candidates.map(({ explicitLine, composite, qualifiedComposite, ...item }) => {
@@ -54,6 +54,10 @@ export function normalizeOrder(raw: unknown): NormalizedOrder {
     used.add(lineKey);
     return { lineKey, ...item };
   });
+  const payTime = source.pay_time;
+  if (payTime != null && (typeof payTime !== "number" || !Number.isSafeInteger(payTime) || payTime < 0)) throw new AppError("INVALID_SOURCE_TIMESTAMP", 502);
+  const paidAt = typeof payTime === "number" && payTime > 0 ? timestamp(payTime) : null;
+  const paymentStatus = paidAt ? "PAID" : payTime === 0 ? "UNPAID" : "UNKNOWN";
   const merchandise = items.reduce((sum, item) => sum + amountUnits(item.paidUnitPrice) * BigInt(item.quantity), 0n);
-  return { orderSn: source.order_sn, status: source.order_status, currency: "IDR", totalAmount: money(source.total_amount), merchandiseAmount: amountString(merchandise), createdAt: timestamp(source.create_time), updatedAt: timestamp(source.update_time), items };
+  return { orderSn: source.order_sn, status: source.order_status, paymentStatus, paidAt, cancelReason: typeof source.cancel_reason === "string" ? source.cancel_reason : null, currency: "IDR", totalAmount: money(source.total_amount), merchandiseAmount: amountString(merchandise), createdAt: timestamp(source.create_time), updatedAt: timestamp(source.update_time), items };
 }

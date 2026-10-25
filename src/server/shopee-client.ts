@@ -59,6 +59,14 @@ export class ShopeeClient {
     // omits shop_id from its response. The ID was already checked against our allowlist.
     return { shopId: raw.shop_id ? externalId(raw.shop_id) : shopId, name: z.string().min(1).parse(raw.shop_name), currency: "IDR" };
   }
+  async returnList(accessToken: string, shopId: string, from: Date, to: Date, page: number) {
+    const raw = await this.call("/api/v2/returns/get_return_list", { accessToken, shopId, query: { update_time_from: String(Math.floor(from.getTime() / 1000)), update_time_to: String(Math.floor(to.getTime() / 1000)), page_no: String(page), page_size: "50" } });
+    const parsed = z.object({ more: z.boolean(), return: z.array(object) }).parse(raw);
+    return { more: parsed.more, returns: parsed.return };
+  }
+  async returnDetail(accessToken: string, shopId: string, returnSn: string) {
+    return this.call("/api/v2/returns/get_return_detail", { accessToken, shopId, query: { return_sn: returnSn } });
+  }
   async escrowDetail(accessToken: string, shopId: string, orderSn: string) {
     return this.call("/api/v2/payment/get_escrow_detail", { accessToken, shopId, query: { order_sn: orderSn } });
   }
@@ -70,7 +78,7 @@ export class ShopeeClient {
   }
   async orderDetails(accessToken: string, shopId: string, orderSns: string[]): Promise<unknown[]> {
     if (!orderSns.length) return [];
-    const raw = await this.call("/api/v2/order/get_order_detail", { accessToken, shopId, query: { order_sn_list: orderSns.join(","), response_optional_fields: "total_amount,item_list" } });
+    const raw = await this.call("/api/v2/order/get_order_detail", { accessToken, shopId, query: { order_sn_list: orderSns.join(","), response_optional_fields: "total_amount,item_list,pay_time,cancel_reason,cancel_by" } });
     const orders = z.array(object).parse(raw.order_list);
     const returned = new Set(orders.map(order => order.order_sn));
     if (orderSns.some(sn => !returned.has(sn))) throw new AppError("INCOMPLETE_ORDER_DETAILS", 502);

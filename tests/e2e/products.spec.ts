@@ -12,8 +12,10 @@ test("products collapse variations and preserve individual cost controls", async
   const variations = page.getByRole("table", { name: "Variations for Desktop speaker stand", exact: true });
   await expect(variations).toBeVisible();
   await expect(variations.locator("tbody tr")).toHaveCount(2);
-  await expect(variations.getByText("SPK-BLK", { exact: true })).toBeVisible();
-  await expect(variations.getByText("SPK-WHT", { exact: true })).toBeVisible();
+  await expect(variations.getByText("Black", { exact: true })).toBeVisible();
+  await expect(variations.getByText("White", { exact: true })).toBeVisible();
+  await expect(variations.getByText("SKU: SPK-BLK", { exact: true })).toBeVisible();
+  await expect(variations.getByText("SKU: SPK-WHT", { exact: true })).toBeVisible();
   await expect(variations.locator('form[action="/api/variants/sample-1/costs"]')).toHaveCount(1);
   await expect(variations.locator('form[action="/api/variants/sample-5/costs"]')).toHaveCount(1);
   for (const button of await variations.getByRole("button", { name: "Save cost", exact: true }).all()) await expect(button).toBeDisabled();

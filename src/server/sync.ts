@@ -1,3 +1,5 @@
+import { syncShopReturns } from "./returns.ts";
+import { syncVariationNames } from "./variation-names.ts";
 import { syncShopFinance } from "./finance.ts";
 import { getDb } from "./db.ts";
 import { getConfig, partnerConfig } from "./env.ts";
@@ -17,14 +19,16 @@ async function saveOrder(shopId: string, generation: number, source: NormalizedO
     if (connection[0]?.version !== generation || connection[0]?.status !== "CONNECTED") throw new AppError("CONNECTION_CHANGED", 409);
     const previous = await tx.order.findUnique({ where: { shopId_orderSn: { shopId, orderSn: source.orderSn } } });
     if (previous && previous.sourceUpdatedAt > source.updatedAt) return;
-    const data = { status: source.status, totalAmount: source.totalAmount, merchandiseAmount: source.merchandiseAmount, sourceUpdatedAt: source.updatedAt, lastSyncedAt: new Date() };
+    const data = { status: source.status, ...(source.paymentStatus !== "UNKNOWN" ? { paymentStatus: source.paymentStatus, paidAt: source.paidAt } : {}), cancelReason: source.cancelReason, totalAmount: source.totalAmount, merchandiseAmount: source.merchandiseAmount, sourceUpdatedAt: source.updatedAt, lastSyncedAt: new Date() };
     const order = await tx.order.upsert({ where: { shopId_orderSn: { shopId, orderSn: source.orderSn } }, create: { shopId, orderSn: source.orderSn, currency: source.currency, sourceCreatedAt: source.createdAt, ...data }, update: data });
     if (!previous || previous.status !== source.status) await tx.orderHistory.create({ data: { orderId: order.id, previousStatus: previous?.status, status: source.status, sourceUpdatedAt: source.updatedAt } });
     for (const item of source.items) {
-      const variant = await tx.productVariant.upsert({ where: { shopId_sourceItemId_sourceModelId: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId } }, create: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId, name: item.name, sku: item.sku }, update: { name: item.name, sku: item.sku } });
+      const variant = await tx.productVariant.upsert({ where: { shopId_sourceItemId_sourceModelId: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId } }, create: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId, name: item.name, variationName: item.variationName, sku: item.sku }, update: { name: item.name, ...(item.variationName ? { variationName: item.variationName } : {}), sku: item.sku } });
       const cost = await tx.skuCostVersion.findFirst({ where: { variantId: variant.id, effectiveAt: { lte: source.createdAt } }, orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }] });
       const existingItem = await tx.orderItem.findUnique({ where: { orderId_sourceLineKey: { orderId: order.id, sourceLineKey: item.lineKey } } });
-      if (!existingItem) await tx.orderItem.create({ data: { orderId: order.id, sourceLineKey: item.lineKey, variantId: variant.id, name: item.name, sku: item.sku, quantity: item.quantity, originalUnitPrice: item.originalUnitPrice, paidUnitPrice: item.paidUnitPrice, costSnapshot: cost?.amount ?? null, costVersionId: cost?.id ?? null, costQuality: cost ? (cost.note?.startsWith("[Historical baseline]") ? "HISTORICAL_BASELINE" : "HISTORICAL_INPUT") : "MISSING" } });
+      if (!existingItem) await tx.orderItem.create({ data: { orderId: order.id, sourceLineKey: item.lineKey, variantId: variant.id, name: item.name, variationName: item.variationName, sku: item.sku, quantity: item.quantity, originalUnitPrice: item.originalUnitPrice, paidUnitPrice: item.paidUnitPrice, costSnapshot: cost?.amount ?? null, costVersionId: cost?.id ?? null, costQuality: cost ? (cost.note?.startsWith("[Historical baseline]") ? "HISTORICAL_BASELINE" : "HISTORICAL_INPUT") : "MISSING" } });
+      // Enrich missing labels on replay without changing checkout amounts or COGS.
+      if (existingItem && !existingItem.variationName && item.variationName) await tx.orderItem.updateMany({ where: { id: existingItem.id, variationName: null }, data: { variationName: item.variationName } });
       // Checkout and cost snapshots are intentionally immutable on replay.
     }
   });
@@ -85,6 +89,14 @@ export async function runShopSync(job: SyncJob, controls: { shouldPause?: () => 
           return { windows: windows.slice(index).map(range => ({ from: range.from.toISOString(), to: range.to.toISOString() })), progress: error.progress };
         }
         await db.syncRun.update({ where: { id: job.runId }, data: { processed } });
+      }
+      if (!controls.shouldPause?.()) {
+        try { await syncVariationNames(job.shopId, job.generation, { shouldPause: controls.shouldPause }); }
+        catch (error) { console.error(JSON.stringify({ event: "variation_names_sync_failed", code: publicErrorCode(error) })); }
+      }
+      if (!controls.shouldPause?.()) {
+        try { await syncShopReturns(job.shopId, job.generation, controls); }
+        catch (error) { console.error(JSON.stringify({ event: "returns_sync_failed", code: publicErrorCode(error) })); }
       }
       // Settlement refresh is independent: unavailable payment permissions must
       // not undo a successful order import. Each tick fills another bounded batch.

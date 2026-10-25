@@ -16,9 +16,9 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const demo = data.mode === "demo";
   const cards = [
     { label: "Completed sales", value: rupiah(data.metrics.sales), note: "Merchandise before refunds and fees", icon: "money" },
-    { label: "Orders placed", value: number(data.metrics.orders), note: `${data.metrics.completed} completed / ${data.metrics.cancelled} cancelled`, icon: "orders" },
+    { label: "Orders placed", value: number(data.metrics.orders), note: `${data.metrics.completed} completed / ${data.metrics.cancelled} cancelled (all orders)`, icon: "orders" },
     { label: "Net profit", value: rupiah(data.metrics.profit), note: data.profitSummary ? `${data.profitSummary.covered} / ${data.profitSummary.eligible} completed orders · ${data.profitSummary.estimated ? "includes estimated costs" : "after COGS and Shopee deductions"}` : "Waiting for payouts and COGS", icon: "products" },
-    { label: "Confirmed refunds", value: rupiah(data.metrics.refunds), note: demo ? "Sample refunds updated in this period" : "Complete financial coverage is not verified", icon: "returns" },
+    { label: "Confirmed refunds", value: rupiah(data.metrics.refunds), note: demo ? "Sample refunds updated in this period" : data.returnsReady ? "Accepted returns updated in this period" : "Waiting for return sync", icon: "returns" },
   ];
   const topProducts = [...data.products].sort((a, b) => b.units - a.units).slice(0, 4);
   return <>
@@ -26,6 +26,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     <PageHeading title="Overview" actions={<div className="flex flex-wrap items-start gap-2">{data.shop && <FinanceSyncButton shopId={data.shop.id} disabled={demo || data.shop.status !== "CONNECTED"}/>}<SyncButton shopId={data.shop?.id} disabled={demo || data.shop?.status !== "CONNECTED"}/></div>}/>
     <dl className="metrics-grid">{cards.map((card, index) => <Metric key={card.label} label={card.label} value={card.value} note={card.note} icon={card.icon} featured={index === 0}/>)}</dl>
     {data.profitSummary && <p className="mb-5 text-xs text-muted-foreground">Net profit = Shopee payout − recorded COGS. Payout already includes Shopee fees, affiliate commissions, refunds and adjustments. Advertising spend is separate.{data.profitSummary.covered < data.profitSummary.eligible ? " Orders missing costs or payouts are excluded from this subtotal." : ""}{data.profitSummary.error ? " Some payouts are awaiting refresh." : ""}</p>}
+    {data.cancellations && <p className="mb-5 text-xs text-muted-foreground">Cancellations: {data.cancellations.paid} paid · {data.cancellations.unpaid} unpaid · {data.cancellations.returned} returned/refunded{data.cancellations.unknown > 0 ? ` · ${data.cancellations.unknown} awaiting payment details` : ""}. Shopee’s Ready to Ship report uses a different order group. All order counts here use the order creation date in WIB.</p>}
     <ReportingControls period={period}/>
     <div className="analytics-grid">
       <Card role="region" aria-label="Sales chart">{data.trend.length ? <OverviewTrend data={data.trend}/> : <><div className="card-heading"><h2>Sales over time</h2></div><EmptyState title="No sales in this period">Connect a shop or choose a different date range.</EmptyState></>}</Card>

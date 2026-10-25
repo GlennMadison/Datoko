@@ -1,3 +1,4 @@
+import { cancellationBreakdown } from "../core/cancellations.ts";
 import { calculateOrderProfit, readSettlement, type OrderProfit } from "../core/profit.ts";
 import { amountString, amountUnits } from "../core/money.ts";
 import { groupProducts, type ProductGroup, type ProductVariantRow } from "../core/products.ts";
@@ -10,7 +11,7 @@ import { AppError } from "../core/errors.ts";
 import { dayStart, periodContains, resolveReportPeriod, shiftDate, type ReportPeriod } from "../core/reporting-period.ts";
 import { activityTrend, type ActivityPoint } from "./reporting.ts";
 
-export type OrderRow = { id: string; orderSn: string; name: string; sku: string; quantity: number; total: number; merchandise: string; status: string; createdAt: string; hasReturn: boolean; costMissing: boolean; profit?: number | null; profitQuality?: OrderProfit["quality"]; payout?: number | null; cogs?: number | null };
+export type OrderRow = { id: string; orderSn: string; name: string; variationName?: string | null; sku: string; quantity: number; total: number; merchandise: string; status: string; createdAt: string; hasReturn: boolean; costMissing: boolean; profit?: number | null; profitQuality?: OrderProfit["quality"]; payout?: number | null; cogs?: number | null };
 export type ProductRow = ProductVariantRow;
 export type ReturnRow = { id: string; returnSn: string; orderSn: string; status: string; reportedAmount: number | null; confirmedRefund: number | null; updatedAt: string };
 export type RunRow = { id: string; status: string; reason: string; processed: number; errorCode: string | null; createdAt: string };
@@ -27,6 +28,9 @@ export type DashboardData = {
   coverageFrom: string | null;
   ordersCheckpoint: string | null;
   financeReady: boolean;
+  returnsReady?: boolean;
+  returnsError?: string | null;
+  cancellations?: ReturnType<typeof cancellationBreakdown>;
   profitSummary?: { covered: number; eligible: number; estimated: number; payout: number; cogs: number; lastSyncedAt: string | null; error: string | null };
 };
 
@@ -37,15 +41,15 @@ export function demoDashboard(period: ReportPeriod): DashboardData {
     { id: "sample-3", name: "Ambient table lamp", sku: "LMP-IVY", cost: 72000, units: 16 },
     { id: "sample-4", name: "Compact speaker stand", sku: "CMP-WHT", cost: null, units: 11 },
   ];
-  const products: ProductRow[] = sampleProducts.map((product, index) => ({ ...product, shopId: "demo", sourceItemId: String(1000 + index), sourceModelId: "0", nameObservedAt: "2026-01-01T00:00:00.000Z" }));
-  products.push({ ...products[0], id: "sample-5", sourceModelId: "1", sku: "SPK-WHT", cost: 48000, units: 0, nameObservedAt: "2026-01-02T00:00:00.000Z" });
+  const products: ProductRow[] = sampleProducts.map((product, index) => ({ ...product, variationName: index === 0 ? "Black" : null, shopId: "demo", sourceItemId: String(1000 + index), sourceModelId: "0", nameObservedAt: "2026-01-01T00:00:00.000Z" }));
+  products.push({ ...products[0], id: "sample-5", sourceModelId: "1", variationName: "White", sku: "SPK-WHT", cost: 48000, units: 0, nameObservedAt: "2026-01-02T00:00:00.000Z" });
   const todayStart = dayStart(period.today).getTime();
   const currentHour = Math.max(0, Math.floor((Date.now() - todayStart) / 3_600_000));
   const allOrders: OrderRow[] = Array.from({ length: 12 }, (_, index) => {
     const product = products[index % sampleProducts.length];
     const total = [110000, 98000, 175000, 89000][index % 4];
     const createdAt = new Date(dayStart(shiftDate(period.today, -Math.floor(index / 2))).getTime() + Math.min(currentHour, index % 2 ? 15 : 9) * 3_600_000).toISOString();
-    return { id: `sample-${index}`, orderSn: `DEMO-${index + 1024}`, name: product.name, sku: product.sku, quantity: index % 5 === 0 ? 2 : 1, total, merchandise: String(total), status: index === 4 ? "CANCELLED" : index < 2 ? "READY_TO_SHIP" : "COMPLETED", createdAt, hasReturn: index === 3, costMissing: product.cost === null };
+    return { id: `sample-${index}`, orderSn: `DEMO-${index + 1024}`, name: product.name, variationName: product.variationName, sku: product.sku, quantity: index % 5 === 0 ? 2 : 1, total, merchandise: String(total), status: index === 4 ? "CANCELLED" : index < 2 ? "READY_TO_SHIP" : "COMPLETED", createdAt, hasReturn: index === 3, costMissing: product.cost === null };
   });
   const orders = allOrders.filter(order => periodContains(period, order.createdAt));
   const returns = [{ id: "sample-return", returnSn: "RETURN-DEMO-001", orderSn: allOrders[3].orderSn, status: "RESOLVED", reportedAmount: 40000, confirmedRefund: 40000, updatedAt: new Date(Math.min(Date.now() - 1000, todayStart + 8 * 3_600_000)).toISOString() }].filter(value => periodContains(period, value.updatedAt));
@@ -84,11 +88,14 @@ export async function getDashboardData(selection: ReportPeriod | number = 30): P
   ]);
   if (orderCount > 50_000 || returnCount > 50_000) throw new AppError("REPORT_RANGE_TOO_LARGE", 400);
   const [orders, variants, returns, runs] = await Promise.all([
-    db.order.findMany({ where: { shopId: shop.id, sourceCreatedAt: range }, include: { items: true, returns: { select: { id: true } }, financialSnapshots: { where: { source: "SHOPEE_ESCROW" }, orderBy: { revision: "desc" }, take: 1 } }, orderBy: { sourceCreatedAt: "desc" } }),
+    db.order.findMany({ where: { shopId: shop.id, sourceCreatedAt: range }, include: { items: true, returns: { select: { id: true, status: true } }, financialSnapshots: { where: { source: "SHOPEE_ESCROW" }, orderBy: { revision: "desc" }, take: 1 } }, orderBy: { sourceCreatedAt: "desc" } }),
     db.productVariant.findMany({ where: { shopId: shop.id }, include: { costs: { where: { effectiveAt: { lte: new Date() } }, orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }], take: 1 }, orderItems: { orderBy: [{ order: { sourceCreatedAt: "desc" } }, { id: "asc" }], take: 1, select: { name: true, order: { select: { sourceCreatedAt: true } } } } } }),
     db.returnCase.findMany({ where: { shopId: shop.id, sourceUpdatedAt: range }, include: { order: { select: { orderSn: true } } }, orderBy: { sourceUpdatedAt: "desc" } }),
     db.syncRun.findMany({ where: { shopId: shop.id }, orderBy: { createdAt: "desc" }, take: 30 }),
   ]);
+  const returnState = shop.syncStates.find(state => state.resource === "returns");
+  const returnsReady = Boolean(returnState?.lastSuccessAt && !returnState.lastErrorCode);
+  const cancellations = cancellationBreakdown(orders);
   const profits = new Map(orders.map(order => [order.id, calculateOrderProfit({ status: order.status, items: order.items.map(item => ({ quantity: item.quantity, costSnapshot: item.costSnapshot?.toString() ?? null, costQuality: item.costQuality })) }, readSettlement(order.financialSnapshots[0]?.amounts))]));
   const eligible = orders.filter(order => order.status === "COMPLETED");
   const covered = eligible.map(order => profits.get(order.id)!).filter(result => result.profit !== null);
@@ -104,11 +111,11 @@ export async function getDashboardData(selection: ReportPeriod | number = 30): P
   const state = shop.syncStates.find(state => state.resource === "orders");
   return {
     mode: "live", shop: { id: shop.id, name: shop.name, sourceShopId: shop.sourceShopId, status: shop.connection?.status ?? "DISCONNECTED", environment: shop.environment },
-    metrics: { orders: orders.length, completed: orders.filter(order => order.status === "COMPLETED").length, cancelled: orders.filter(order => order.status === "CANCELLED").length, sales: orders.filter(order => order.status === "COMPLETED").reduce((sum, order) => sum + Number(order.merchandiseAmount), 0), placedValue: orders.reduce((sum, order) => sum + Number(order.totalAmount), 0), profit: covered.length ? sum("profit") : eligible.length ? null : 0, refunds: null },
-    profitSummary,
+    metrics: { orders: orders.length, completed: orders.filter(order => order.status === "COMPLETED").length, cancelled: orders.filter(order => order.status === "CANCELLED").length, sales: orders.filter(order => order.status === "COMPLETED").reduce((sum, order) => sum + Number(order.merchandiseAmount), 0), placedValue: orders.reduce((sum, order) => sum + Number(order.totalAmount), 0), profit: covered.length ? sum("profit") : eligible.length ? null : 0, refunds: returnsReady ? returns.reduce((sum, value) => sum + Number(value.confirmedRefund ?? 0), 0) : null },
+    profitSummary, returnsReady, returnsError: returnState?.lastErrorCode ?? null, cancellations,
     trend,
-    orders: orders.map(order => ({ id: order.id, orderSn: order.orderSn, name: order.items[0]?.name ?? "Order", sku: order.items[0]?.sku ?? "-", quantity: order.items.reduce((sum, item) => sum + item.quantity, 0), total: Number(order.totalAmount), merchandise: order.merchandiseAmount.toString(), status: order.status, createdAt: order.sourceCreatedAt.toISOString(), hasReturn: order.returns.length > 0, costMissing: order.items.some(item => item.costSnapshot === null), profit: profits.get(order.id)!.profit === null ? null : Number(profits.get(order.id)!.profit), profitQuality: profits.get(order.id)!.quality, payout: profits.get(order.id)!.payout === null ? null : Number(profits.get(order.id)!.payout), cogs: profits.get(order.id)!.cogs === null ? null : Number(profits.get(order.id)!.cogs) })),
-    products: groupProducts(variants.map(variant => ({ id: variant.id, shopId: variant.shopId, sourceItemId: variant.sourceItemId, sourceModelId: variant.sourceModelId, name: variant.orderItems[0]?.name ?? variant.name, nameObservedAt: (variant.orderItems[0]?.order.sourceCreatedAt ?? variant.createdAt).toISOString(), sku: variant.sku ?? "No SKU", cost: variant.costs[0] ? Number(variant.costs[0].amount) : null, units: unitsByVariant.get(variant.id) ?? 0 }))),
+    orders: orders.map(order => ({ id: order.id, orderSn: order.orderSn, name: order.items[0]?.name ?? "Order", variationName: order.items[0]?.variationName ?? null, sku: order.items[0]?.sku ?? "-", quantity: order.items.reduce((sum, item) => sum + item.quantity, 0), total: Number(order.totalAmount), merchandise: order.merchandiseAmount.toString(), status: order.status, createdAt: order.sourceCreatedAt.toISOString(), hasReturn: order.returns.length > 0, costMissing: order.items.some(item => item.costSnapshot === null), profit: profits.get(order.id)!.profit === null ? null : Number(profits.get(order.id)!.profit), profitQuality: profits.get(order.id)!.quality, payout: profits.get(order.id)!.payout === null ? null : Number(profits.get(order.id)!.payout), cogs: profits.get(order.id)!.cogs === null ? null : Number(profits.get(order.id)!.cogs) })),
+    products: groupProducts(variants.map(variant => ({ id: variant.id, shopId: variant.shopId, sourceItemId: variant.sourceItemId, sourceModelId: variant.sourceModelId, name: variant.orderItems[0]?.name ?? variant.name, variationName: variant.variationName, nameObservedAt: (variant.orderItems[0]?.order.sourceCreatedAt ?? variant.createdAt).toISOString(), sku: variant.sku ?? "No SKU", cost: variant.costs[0] ? Number(variant.costs[0].amount) : null, units: unitsByVariant.get(variant.id) ?? 0 }))),
     returns: returns.map(value => ({ id: value.id, returnSn: value.returnSn, orderSn: value.order.orderSn, status: value.status, reportedAmount: value.reportedAmount ? Number(value.reportedAmount) : null, confirmedRefund: value.confirmedRefund ? Number(value.confirmedRefund) : null, updatedAt: value.sourceUpdatedAt.toISOString() })),
     runs: runs.map(run => ({ id: run.id, status: run.status, reason: run.reason, processed: run.processed, errorCode: run.errorCode, createdAt: run.createdAt.toISOString() })),
     lastSyncedAt: state?.lastSuccessAt?.toISOString() ?? null, coverageFrom: state?.coverageFrom?.toISOString() ?? null, ordersCheckpoint: state?.checkpoint?.toISOString() ?? null, financeReady: eligible.length === covered.length && profitSummary.estimated === 0,

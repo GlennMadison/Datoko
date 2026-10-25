@@ -4,6 +4,7 @@ export type ProductVariantRow = {
   sourceItemId: string;
   sourceModelId: string;
   name: string;
+  variationName: string | null;
   nameObservedAt: string;
   sku: string;
   cost: number | null;

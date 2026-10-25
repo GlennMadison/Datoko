@@ -80,3 +80,20 @@ test("Shopee's main_item field distinguishes shared add-on main and secondary it
   const order = normalizeOrder({ ...source, item_list: [main, addon] });
   assert.notEqual(order.items[0].lineKey, order.items[1].lineKey);
 });
+test("variation names are separate from product names, IDs and SKUs", () => {
+  const line = { ...item, model_id: "9", model_name: " Black, Compact ", model_sku: "" };
+  const before = normalizeOrder({ ...source, item_list: [line] }).items[0];
+  const after = normalizeOrder({ ...source, item_list: [{ ...line, model_name: "Black, Wide" }] }).items[0];
+  assert.equal(before.variationName, "Black, Compact");
+  assert.equal(before.name, "Speaker stand");
+  assert.equal(before.lineKey, after.lineKey);
+  assert.equal(before.paidUnitPrice, after.paidUnitPrice);
+  assert.equal(normalizeOrder({ ...source, item_list: [{ ...line, model_name: undefined }] }).items[0].variationName, null);
+});
+test("payment timestamps distinguish paid, unpaid and unknown without guessing", () => {
+  const paid = normalizeOrder({ ...source, pay_time: 1792065700 });
+  assert.equal(paid.paymentStatus, "PAID"); assert.equal(paid.paidAt?.getTime(), 1792065700000);
+  assert.equal(normalizeOrder({ ...source, pay_time: 0 }).paymentStatus, "UNPAID");
+  assert.equal(normalizeOrder(source).paymentStatus, "UNKNOWN");
+  assert.throws(() => normalizeOrder({ ...source, pay_time: -1 }));
+});
