@@ -93,7 +93,13 @@ export async function syncShopAds(shopId: string, generation: number, controls: 
         for (let offset = 0; offset < ids.length; offset += 100) {
           const batch = ids.slice(offset, offset + 100);
           const raw = await read((token, sourceId) => client.adsCampaignDaily(token, sourceId, range.from, range.to, batch));
-          await save(normalizeCampaignAds(raw, shop.sourceShopId, batch, range));
+          let products = new Map<string, string[]>();
+          try { products = await read((token, sourceId) => client.adsCampaignSettings(token, sourceId, batch)); }
+          catch (error) {
+            if (error instanceof AppError && ["CONNECTION_CHANGED", "ADS_SYNC_PAUSED"].includes(error.code)) throw error;
+            console.error(JSON.stringify({ event: "ads_product_mapping_unavailable", code: publicErrorCode(error) }));
+          }
+          await save(normalizeCampaignAds(raw, shop.sourceShopId, batch, range, products));
         }
       });
     }

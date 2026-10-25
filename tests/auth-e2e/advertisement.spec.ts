@@ -15,7 +15,7 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
     const owner = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
     await pool.query('INSERT INTO shops (id, "ownerId", "sourceShopId", environment, name, "updatedAt") VALUES ($1,$2,$3,\'sandbox\',\'Browser shop\',now())', [shopId, owner.id, sourceShopId]);
     await pool.query('INSERT INTO product_variants (id,"shopId","sourceItemId","sourceModelId",name,"updatedAt") VALUES ($1,$2,\'1\',\'0\',\'Browser product\',now())', [variantId, shopId]);
-    await pool.query('INSERT INTO orders (id,"shopId","orderSn",status,"totalAmount","merchandiseAmount","sourceCreatedAt","sourceUpdatedAt") VALUES ($1,$2,\'ADS-BROWSER-ORDER\',\'COMPLETED\',1000000,1000000,\'2026-10-01T08:00:00Z\',\'2026-10-01T09:00:00Z\')', [orderId, shopId]);
+    await pool.query('INSERT INTO orders (id,"shopId","orderSn",status,"paymentStatus","totalAmount","merchandiseAmount","sourceCreatedAt","sourceUpdatedAt") VALUES ($1,$2,\'ADS-BROWSER-ORDER\',\'COMPLETED\',\'PAID\',1000000,1000000,\'2026-10-01T08:00:00Z\',\'2026-10-01T09:00:00Z\')', [orderId, shopId]);
     await pool.query('INSERT INTO order_items (id,"orderId","sourceLineKey","variantId",name,quantity,"originalUnitPrice","paidUnitPrice") VALUES ($1,$2,\'line:1\',$3,\'Browser product\',1,1000000,1000000)', [randomUUID(), orderId, variantId]);
     await page.goto("/advertisement?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
     await expect(page.getByTestId("real-roas")).toHaveText("Unavailable");
@@ -46,9 +46,31 @@ test("owner imports attributed sales, sees correct ROAS, and late cancellation r
     await expect(page.getByRole("button", { name: "Ads sync queued", exact: true })).toBeDisabled();
     expect((await page.request.post("/api/advertisement/sync", { headers: { Origin: "https://outsider.example.test" } })).status()).toBe(403);
     expect((await pool.query('SELECT count(*)::int AS total FROM sync_states WHERE "shopId"=$1 AND resource=\'ads-request\'', [shopId])).rows[0].total).toBe(1);
+
+    const automaticDataset = randomUUID(), automaticBucket = randomUUID();
+    await pool.query(`INSERT INTO ad_datasets (id,"shopId","sourceKey",name,basis,"updatedAt") VALUES ($1,$2,'shopee-api-cpc-7d-total-v1','Automatic fixture','PLACED_TOTAL',now())`, [automaticDataset, shopId]);
+    await pool.query(`INSERT INTO ad_report_buckets (id,"datasetId","campaignKey","campaignName",grain,"startAt","endAt",spend,revenue,"sourceAsOf","sourceDigest","updatedAt") VALUES ($1,$2,'shop','Shop total','DAY','2026-09-30T17:00:00Z','2026-10-01T17:00:00Z',100000,1000000,now(),'estimate-fixture',now())`, [automaticBucket, automaticDataset]);
+    await pool.query(`INSERT INTO ad_report_revisions (id,"reportId",digest,"sourceAsOf","importedBy",payload) VALUES ($1,$2,'estimate-fixture',now(),$3,$4::jsonb)`, [randomUUID(), automaticBucket, owner.id, JSON.stringify({ sourceMetrics: { directRevenue: "1000000", advertisedItemIds: ["1"] } })]);
+    for (const resource of ["orders", "returns"]) await pool.query(`INSERT INTO sync_states (id,"shopId",resource,"coverageFrom","lastSuccessAt","updatedAt") VALUES ($1,$2,$3,'2026-09-01',now(),now())`, [randomUUID(), shopId, resource]);
+    await page.goto("/advertisement?preset=custom&from=2026-10-01&to=2026-10-01&interval=day");
+    await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
+    await pool.query(`UPDATE orders SET status='UNPAID',"paymentStatus"='UNPAID' WHERE id=$1`, [orderId]);
+    await page.reload();
+    await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
+    await pool.query(`UPDATE orders SET status='COMPLETED',"paymentStatus"='PAID' WHERE id=$1`, [orderId]);
+    await page.reload();
+    await expect(page.getByTestId("estimated-roas")).toHaveText("10.00x");
+    await pool.query(`INSERT INTO return_cases (id,"shopId","orderId","returnSn",status,"confirmedRefund","sourceUpdatedAt") VALUES ($1,$2,$3,'ADS-BROWSER-RETURN','ACCEPTED',300000,now())`, [randomUUID(), shopId, orderId]);
+    await page.reload();
+    await expect(page.getByTestId("estimated-roas")).toHaveText("7.00x");
+    await expect(page.getByTestId("original-roas")).toHaveText("10.00x");
+    await pool.query(`UPDATE return_cases SET "confirmedRefund"=1000000 WHERE "orderId"=$1`, [orderId]);
+    await page.reload();
+    await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
   } finally {
     await pool.query('DELETE FROM ad_report_buckets WHERE "datasetId" IN (SELECT id FROM ad_datasets WHERE "shopId"=$1)', [shopId]);
     await pool.query('DELETE FROM ad_datasets WHERE "shopId"=$1', [shopId]);
+    await pool.query('DELETE FROM return_cases WHERE \"orderId\"=$1', [orderId]);
     await pool.query('DELETE FROM order_items WHERE "orderId"=$1', [orderId]);
     await pool.query('DELETE FROM orders WHERE id=$1', [orderId]);
     await pool.query('DELETE FROM product_variants WHERE id=$1', [variantId]);

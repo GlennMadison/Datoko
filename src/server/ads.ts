@@ -3,7 +3,9 @@ import { getConfig, isDemo } from "./env.ts";
 import { transactionLock } from "./queue.ts";
 import { requireDashboardUser, demoDashboard } from "./dashboard.ts";
 import { SHOPEE_ADS_DATASET, type AdsRow } from "../core/shopee-ads.ts";
-import { validateAdImport } from "./ads-import-schema.ts";
+import { readSettlement } from "../core/profit.ts";
+import { buildOutcomeCohorts, estimateAds, type AdsEstimate, type EstimateContext } from "../core/ads-estimate.ts";
+import { adSourceMetricsSchema, validateAdImport } from "./ads-import-schema.ts";
 import { attributionLineKey, calculateRoas, type AdSourceReport, type AttributionEvidence, type RoasResult } from "../core/ads-roas.ts";
 import { createTimeBuckets, dayStart, localDate, shiftDate, type ReportPeriod, type ReportQuery } from "../core/reporting-period.ts";
 import { amountString, amountUnits } from "../core/money.ts";
@@ -68,19 +70,19 @@ async function persistAdReport(ownerId: string, value: unknown, now: Date, autom
       const report = await tx.adReportBucket.upsert({ where: { datasetId_campaignKey_grain_startAt: unique }, create: { ...unique, ...data }, update: data });
       await tx.adAttributionAllocation.deleteMany({ where: { reportId: report.id } });
       if (row.allocations.length) await tx.adAttributionAllocation.createMany({ data: row.allocations.map(a => ({ reportId: report.id, sourceKey: a.key, orderSn: a.orderSn, sourceLineKey: a.lineKey, amount: a.amount, disposition: a.disposition, confirmedRefund: a.confirmedRefund, provisional: a.provisional, returnReferences: a.returnReferences })) });
-      await tx.adReportRevision.create({ data: { reportId: report.id, digest: sourceDigest, sourceAsOf: new Date(row.sourceAsOf), importedBy: ownerId, payload: row } });
+      await tx.adReportRevision.upsert({ where: { reportId_digest: { reportId: report.id, digest: sourceDigest } }, create: { reportId: report.id, digest: sourceDigest, sourceAsOf: new Date(row.sourceAsOf), importedBy: ownerId, payload: row }, update: {} });
       imported++;
     }
     return { imported, unchanged, datasetKey: dataset.sourceKey };
   }, { timeout: 30_000 });
 }
 
-type StoredReport = AdSourceReport & { campaignKey: string; campaignName: string };
+type StoredReport = AdSourceReport & { campaignKey: string; campaignName: string; sourceMetrics?: { directRevenue?: string; advertisedItemIds?: string[] } };
 export type AdvertisementData = {
   mode: "demo" | "live"; period: ReportPeriod; datasets: { key: string; name: string; basis: string }[];
   datasetKey: string | null; campaignKey: string; basis: string | null;
-  campaigns: { key: string; name: string; spend: string; originalRoas: string | null; realRoas: string | null }[];
-  summary: RoasResult; points: { date: string; original: number | null; real: number | null; spend: number | null; revenue: number | null }[];
+  campaigns: { key: string; name: string; spend: string; originalRoas: string | null; realRoas: string | null; estimatedRoas?: string | null }[];
+  estimate?: AdsEstimate; summary: RoasResult; points: { date: string; original: number | null; real: number | null; estimated: number | null; spend: number | null; revenue: number | null }[];
   coverage: { expected: number; available: number }; chartUnavailable: string | null;
   sync?: { connected: boolean; lastSuccessAt: string | null; errorCode: string | null; hourlyErrorCode: string | null; campaignErrorCode: string | null; pending: boolean; intervalMinutes: number };
 };
@@ -99,7 +101,7 @@ function applyCoverage(result: RoasResult, coverage: { available: number; expect
 }
 
 /** Shared reporting path: ratios derive from source sums, never averaged ratios. */
-export function buildAdvertisementData(period: ReportPeriod, reports: StoredReport[], evidence: Map<string, AttributionEvidence>, datasets: AdvertisementData["datasets"], datasetKey: string | null, requestedCampaign?: string, mode: "demo" | "live" = "live"): AdvertisementData {
+export function buildAdvertisementData(period: ReportPeriod, reports: StoredReport[], evidence: Map<string, AttributionEvidence>, datasets: AdvertisementData["datasets"], datasetKey: string | null, requestedCampaign?: string, mode: "demo" | "live" = "live", outcomes?: EstimateContext): AdvertisementData {
   const campaignKeys = [...new Set(reports.map(row => row.campaignKey))];
   const campaignKey = requestedCampaign || (campaignKeys.includes("shop") ? "shop" : campaignKeys[0] ?? "shop");
   const selected = reports.filter(row => row.campaignKey === campaignKey);
@@ -110,6 +112,9 @@ export function buildAdvertisementData(period: ReportPeriod, reports: StoredRepo
   const grain = wantsHours && hasHours ? "HOUR" : hasDays ? "DAY" : "HOUR";
   const source = selected.filter(row => row.grain === grain);
   const coverage = sourceCoverage(source, resolved, grain);
+  const basis = datasets.find(row => row.key === datasetKey)?.basis ?? "";
+  const estimate = outcomes ? estimateAds(source, outcomes, coverage.available === coverage.expected, basis) : undefined;
+  if (estimate && campaignKey !== "shop") estimate.storeRoas = null;
   const summary = applyCoverage(calculateRoas(source, evidence, { requireEvidence: true, scopeKey: `${campaignKey}:${grain}` }), coverage);
   const chartUnavailable = wantsHours && grain === "DAY" ? "This report contains daily source totals. Select Daily or Auto to see a supported graph." : null;
   const points = createTimeBuckets(resolved).map(bucket => {
@@ -119,17 +124,18 @@ export function buildAdvertisementData(period: ReportPeriod, reports: StoredRepo
     const complete = !bucket.future && rows.length > 0 && bucketCoverage.available === bucketCoverage.expected;
     const values = complete ? calculateRoas(rows, evidence, { requireEvidence: true, scopeKey: `${campaignKey}:${grain}` }) : null;
     const ambiguous = summary.issues.some(issue => ["DUPLICATE_ATTRIBUTION", "CREDIT_EXCEEDS_ORDER_LINE", "OUTCOME_TOTAL_MISMATCH"].includes(issue));
-    return { date: bucket.date, original: chartUnavailable || !values?.originalRoas ? null : Number(values.originalRoas), real: chartUnavailable || ambiguous || !values?.realRoas ? null : Number(values.realRoas), spend: chartUnavailable || !values ? null : Number(values.spend), revenue: chartUnavailable || ambiguous || !values?.retainedRevenue ? null : Number(values.retainedRevenue) };
+    const estimated = outcomes && complete ? estimateAds(rows, outcomes, true, basis).roas : null;
+    return { date: bucket.date, estimated: chartUnavailable || estimated === null ? null : Number(estimated), original: chartUnavailable || !values?.originalRoas ? null : Number(values.originalRoas), real: chartUnavailable || ambiguous || !values?.realRoas ? null : Number(values.realRoas), spend: chartUnavailable || !values ? null : Number(values.spend), revenue: chartUnavailable || ambiguous || !values?.retainedRevenue ? null : Number(values.retainedRevenue) };
   });
   const campaigns = campaignKeys.map(key => {
     const all = reports.filter(row => row.campaignKey === key);
     const chosenGrain = all.some(row => row.grain === "DAY") ? "DAY" : "HOUR";
     const rows = all.filter(row => row.grain === chosenGrain);
     const values = applyCoverage(calculateRoas(rows, evidence, { requireEvidence: true, scopeKey: `${key}:${chosenGrain}` }), sourceCoverage(rows, resolved, chosenGrain));
-    return { key, name: all[0].campaignName, spend: values.spend, originalRoas: values.originalRoas, realRoas: values.realRoas };
+    return { key, name: all[0].campaignName, spend: values.spend, originalRoas: values.originalRoas, realRoas: values.realRoas, ...(outcomes ? { estimatedRoas: estimateAds(rows, outcomes, sourceCoverage(rows, resolved, chosenGrain).available === sourceCoverage(rows, resolved, chosenGrain).expected, basis).roas } : {}) };
   });
   if (!campaigns.some(row => row.key === campaignKey)) campaigns.push({ key: campaignKey, name: "Selected campaign (no data in this range)", spend: "0.0000", originalRoas: null, realRoas: null });
-  return { mode, period: resolved, datasets, datasetKey, campaignKey, basis: datasets.find(row => row.key === datasetKey)?.basis ?? null, campaigns, summary, points, coverage, chartUnavailable };
+  return { mode, estimate, period: resolved, datasets, datasetKey, campaignKey, basis: datasets.find(row => row.key === datasetKey)?.basis ?? null, campaigns, summary, points, coverage, chartUnavailable };
 }
 
 function demoAdvertisement(period: ReportPeriod, requestedCampaign?: string): AdvertisementData {
@@ -166,10 +172,16 @@ async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, 
   const where = { datasetId: dataset.id, startAt: { gte: new Date(period.fromISO), lt: new Date(period.effectiveToISO) }, endAt: { lte: new Date(period.toISO) } };
   if (await db.adAttributionAllocation.count({ where: { report: where } }) > 50_000 || await db.adReportBucket.count({ where }) > 20_000) throw new AppError("REPORT_RANGE_TOO_LARGE", 400);
   const rows = await db.adReportBucket.findMany({ where, include: { allocations: true }, orderBy: { startAt: "asc" } });
+  const revisions = await db.$queryRaw<{ reportId: string; payload: Prisma.JsonValue }[]>`
+    SELECT r."reportId", r.payload FROM ad_report_revisions r
+    JOIN ad_report_buckets b ON b.id = r."reportId" AND b."sourceDigest" = r.digest
+    WHERE b."datasetId" = ${dataset.id} AND b."startAt" >= ${new Date(period.fromISO)}
+      AND b."startAt" < ${new Date(period.effectiveToISO)} AND b."endAt" <= ${new Date(period.toISO)}`;
+  const payloads = new Map(revisions.map(row => [row.reportId, row.payload]));
   const sns = [...new Set(rows.flatMap(row => row.allocations.map(a => a.orderSn)))];
   const orders = sns.length ? await db.order.findMany({ where: { shopId: shop!.id, orderSn: { in: sns } }, include: { items: true, returns: true } }) : [];
   const evidence = new Map<string, AttributionEvidence>();
-  for (const order of orders) for (const item of order.items) evidence.set(attributionLineKey(order.orderSn, item.sourceLineKey), { lineRevenue: amountString(amountUnits(item.paidUnitPrice.toString()) * BigInt(item.quantity)), name: item.name, sku: item.sku, orderBuyerTotal: order.totalAmount.toString(), orderStatus: order.status, updatedAt: order.sourceUpdatedAt.toISOString(), returns: order.returns.map(value => ({ reference: value.returnSn, updatedAt: value.sourceUpdatedAt.toISOString(), confirmedRefund: value.confirmedRefund?.toString() ?? null })) });
+  for (const order of orders) for (const item of order.items) evidence.set(attributionLineKey(order.orderSn, item.sourceLineKey), { lineRevenue: amountString(amountUnits(item.paidUnitPrice.toString()) * BigInt(item.quantity)), name: item.name, sku: item.sku, orderBuyerTotal: order.totalAmount.toString(), orderStatus: order.status, paymentStatus: order.paymentStatus, updatedAt: order.sourceUpdatedAt.toISOString(), returns: order.returns.map(value => ({ reference: value.returnSn, updatedAt: value.sourceUpdatedAt.toISOString(), confirmedRefund: value.confirmedRefund?.toString() ?? null })) });
   // A narrow date selection must not hide excess credits for the same item in
   // another period. Campaigns and source grains remain independent scopes.
   if (sns.length) {
@@ -184,10 +196,50 @@ async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, 
       amounts.set(scope, (amounts.get(scope) ?? 0n) + amountUnits(credit.amount.toString()));
     }
   }
-  const reports: StoredReport[] = rows.map(row => ({ key: row.id, campaignKey: row.campaignKey, campaignName: row.campaignName, grain: row.grain as "DAY" | "HOUR", start: row.startAt.toISOString(), end: row.endAt.toISOString(), spend: row.spend.toString(), revenue: row.revenue.toString(), sourceAsOf: row.sourceAsOf.toISOString(), attributionComplete: row.attributionComplete, outcomesComplete: row.outcomesComplete,
+  const reports: StoredReport[] = rows.map(row => {
+    const payload = payloads.get(row.id);
+    const parsed = adSourceMetricsSchema.safeParse(payload && typeof payload === "object" && !Array.isArray(payload) ? payload.sourceMetrics : undefined);
+    return ({ ...(parsed.success ? { sourceMetrics: parsed.data } : {}), key: row.id, campaignKey: row.campaignKey, campaignName: row.campaignName, grain: row.grain as "DAY" | "HOUR", start: row.startAt.toISOString(), end: row.endAt.toISOString(), spend: row.spend.toString(), revenue: row.revenue.toString(), sourceAsOf: row.sourceAsOf.toISOString(), attributionComplete: row.attributionComplete, outcomesComplete: row.outcomesComplete,
     allocations: row.allocations.map(a => ({ key: a.sourceKey, orderSn: a.orderSn, lineKey: a.sourceLineKey, amount: a.amount.toString(), disposition: a.disposition as "RETAINED" | "CANCELLED" | "RETURNED", confirmedRefund: a.confirmedRefund.toString(), provisional: a.provisional, returnReferences: a.returnReferences })),
-  }));
-  return { ...buildAdvertisementData(period, reports, evidence, metadata, dataset.sourceKey, filters.campaign), sync };
+  }); });
+  let outcomes: EstimateContext | undefined;
+  if (dataset.sourceKey === SHOPEE_ADS_DATASET) {
+    const issues: string[] = [];
+    const successes: Date[] = [];
+    const maxAge = Math.max(30, getConfig().SYNC_INTERVAL_MINUTES * 2) * 60_000;
+    for (const resource of ["orders", "returns"]) {
+      const source = shop!.syncStates.find(s => s.resource === resource);
+      if (!source?.lastSuccessAt || !source.coverageFrom || source.coverageFrom > new Date(period.fromISO) || source.lastErrorCode) issues.push(resource === "orders" ? "ORDER_SYNC_INCOMPLETE" : "RETURN_SYNC_INCOMPLETE");
+      else {
+        successes.push(source.lastSuccessAt);
+        if (Date.now() - source.lastSuccessAt.getTime() > maxAge) issues.push("OUTCOME_SYNC_STALE");
+      }
+    }
+    const cohortWhere = { shopId: shop!.id, sourceCreatedAt: { gte: new Date(period.fromISO), lt: new Date(period.effectiveToISO) } };
+    if (await db.order.count({ where: cohortWhere }) > 10_000 || await db.orderItem.count({ where: { order: cohortWhere } }) > 50_000) {
+      outcomes = buildOutcomeCohorts([], ["COHORT_RANGE_TOO_LARGE"]);
+    } else {
+      const cohortOrders = await db.order.findMany({ where: cohortWhere, include: {
+        items: { include: { variant: { select: { sourceItemId: true } } } }, returns: true,
+        financialSnapshots: { where: { source: "SHOPEE_ESCROW" }, orderBy: { revision: "desc" }, take: 1 },
+      } });
+      outcomes = buildOutcomeCohorts(cohortOrders.map(order => ({
+        id: order.id, createdAt: order.sourceCreatedAt.toISOString(), status: order.status, paymentStatus: order.paymentStatus,
+        items: order.items.map(item => ({ itemId: item.variant.sourceItemId, revenue: amountString(amountUnits(item.paidUnitPrice.toString()) * BigInt(item.quantity)) })),
+        returns: order.returns.map(value => ({ id: value.returnSn, status: value.status, refund: value.confirmedRefund?.toString() ?? null })),
+        settlementRefund: readSettlement(order.financialSnapshots[0]?.amounts)?.refunds ?? null,
+      })), issues, successes.length === 2 ? new Date(Math.min(...successes.map(date => date.getTime()))).toISOString() : null);
+    }
+    // Shop direct revenue uses the union of known advertised products. Missing
+    // campaign mappings remain an explicit shop-retention fallback.
+    for (const report of reports.filter(row => row.campaignKey === "shop")) {
+      const campaigns = reports.filter(row => row.campaignKey !== "shop" && row.grain === "DAY" && localDate(new Date(row.start)) === localDate(new Date(report.start)));
+      if (campaigns.length && campaigns.every(row => row.sourceMetrics?.advertisedItemIds?.length)) report.sourceMetrics = {
+        ...report.sourceMetrics, advertisedItemIds: [...new Set(campaigns.flatMap(row => row.sourceMetrics!.advertisedItemIds!))],
+      };
+    }
+  }
+  return { ...buildAdvertisementData(period, reports, evidence, metadata, dataset.sourceKey, filters.campaign, "live", outcomes), sync };
 }
 
 export async function advertisementForOwner(ownerId: string, period: ReportPeriod, filters: { dataset?: string; campaign?: string } = {}): Promise<AdvertisementData> {

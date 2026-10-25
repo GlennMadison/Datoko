@@ -14,7 +14,7 @@ test("private attributed reports survive revisions and reconcile to actual store
   await db.user.create({ data: { id: ownerId, name: "Ads owner", email: `${ownerId}@example.test` } });
   const shop = await db.shop.create({ data: { ownerId, sourceShopId, environment: "sandbox", name: "Ads test shop" } });
   const variant = await db.productVariant.create({ data: { shopId: shop.id, sourceItemId: "1", sourceModelId: "0", name: "Test product", sku: "ADS-TEST" } });
-  const order = await db.order.create({ data: { shopId: shop.id, orderSn: "ADS-ORDER", status: "COMPLETED", totalAmount: "1120000", merchandiseAmount: "1000000", sourceCreatedAt: new Date("2026-10-01T08:00:00Z"), sourceUpdatedAt: new Date("2026-10-01T09:00:00Z"), items: { create: { sourceLineKey: "line:1", variantId: variant.id, name: "Test product", quantity: 2, paidUnitPrice: "500000", originalUnitPrice: "500000" } } } });
+  const order = await db.order.create({ data: { shopId: shop.id, orderSn: "ADS-ORDER", status: "COMPLETED", paymentStatus: "PAID", totalAmount: "1120000", merchandiseAmount: "1000000", sourceCreatedAt: new Date("2026-10-01T08:00:00Z"), sourceUpdatedAt: new Date("2026-10-01T09:00:00Z"), items: { create: { sourceLineKey: "line:1", variantId: variant.id, name: "Test product", quantity: 2, paidUnitPrice: "500000", originalUnitPrice: "500000" } } } });
   const period = resolveReportPeriod({ preset: "custom", from: "2026-10-01", to: "2026-10-01", interval: "day" });
   function input(): AdImport { return {
     version: 1, sourceShopId, environment: "sandbox", datasetKey: "source-test", datasetName: "Test report", basis: "PLACED_TOTAL",

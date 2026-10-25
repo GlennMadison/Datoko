@@ -135,3 +135,11 @@ test("request reader enforces JSON and bounded content even without Content-Leng
   await assert.rejects(readAdImportBody(new Request("http://localhost", { method: "POST", headers: { "content-type": "application/json" }, body: "x".repeat(MAX_AD_IMPORT_BYTES + 1) })), /ADS_IMPORT_TOO_LARGE/);
   assert.deepEqual(await readAdImportBody(new Request("http://localhost", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })), {});
 });
+
+test("stored unpaid orders cannot count as retained exact advertising revenue", () => {
+  const value = calculate([report()], evidence({ paymentStatus: "UNPAID" }));
+  assert.equal(value.originalRoas, "10.00"); assert.equal(value.realRoas, "0.00");
+  assert.equal(value.lines[0].outcome, "UNPAID");
+  const unknown = calculate([report()], evidence({ paymentStatus: "UNKNOWN" }));
+  assert.equal(unknown.realRoas, null); assert.ok(unknown.issues.includes("PAYMENT_OUTCOME_UNKNOWN"));
+});

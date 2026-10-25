@@ -13,12 +13,15 @@ const allocation = z.object({
   amount: money, disposition: z.enum(["RETAINED", "CANCELLED", "RETURNED"]),
   confirmedRefund: money, provisional: z.boolean(), returnReferences: z.array(id).max(30),
 }).strict();
+export const adSourceMetricsSchema = z.object({
+  directRevenue: money.optional(), advertisedItemIds: z.array(z.string().regex(/^\\d{1,20}$/)).max(5000).optional(),
+}).strict();
 const row = z.object({
   campaignKey: id, campaignName: text, grain: z.enum(["DAY", "HOUR"]),
   start: z.iso.datetime({ offset: true }), end: z.iso.datetime({ offset: true }),
   spend: money, revenue: money, sourceAsOf: z.iso.datetime({ offset: true }),
   attributionComplete: z.boolean(), outcomesComplete: z.boolean(),
-  allocations: z.array(allocation).max(2000),
+  allocations: z.array(allocation).max(2000), sourceMetrics: adSourceMetricsSchema.optional(),
 }).strict();
 export const adImportSchema = z.object({
   version: z.literal(1), sourceShopId: z.string().regex(/^\d{1,20}$/), environment: z.enum(["sandbox", "production"]),
@@ -41,6 +44,8 @@ export function validateAdImport(value: unknown, now = new Date()): AdImport {
     // Normalize timestamps so offset-equivalent imports share the same hash/key.
     report.start = start.toISOString(); report.end = end.toISOString(); report.sourceAsOf = asOf.toISOString();
     report.spend = amountString(amountUnits(report.spend)); report.revenue = amountString(amountUnits(report.revenue));
+    if (report.sourceMetrics?.directRevenue !== undefined) report.sourceMetrics.directRevenue = amountString(amountUnits(report.sourceMetrics.directRevenue));
+    if (report.sourceMetrics?.advertisedItemIds) report.sourceMetrics.advertisedItemIds = [...new Set(report.sourceMetrics.advertisedItemIds)].sort();
     report.allocations.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
     for (const allocation of report.allocations) {
       allocation.amount = amountString(amountUnits(allocation.amount)); allocation.confirmedRefund = amountString(amountUnits(allocation.confirmedRefund));

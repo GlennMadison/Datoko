@@ -12,7 +12,7 @@ export type AdSourceReport = {
   attributionComplete: boolean; outcomesComplete: boolean; allocations: AdAllocation[];
 };
 export type AttributionEvidence = {
-  lineRevenue: string; orderStatus: string; updatedAt: string;
+  lineRevenue: string; orderStatus: string; updatedAt: string; paymentStatus?: string;
   name?: string; sku?: string | null;
   creditedByScope?: Map<string, bigint>;
   orderBuyerTotal?: string;
@@ -83,10 +83,12 @@ export function calculateRoas(reports: AdSourceReport[], evidence: Map<string, A
       else matchedRevenue += amount;
       if (known) {
         claims.set(key, (claims.get(key) ?? 0n) + amount);
-        if (known.orderStatus !== "CANCELLED" && Date.parse(known.updatedAt) > Date.parse(report.sourceAsOf)) issues.add("OUTCOMES_OUTDATED");
+        if (!["CANCELLED", "IN_CANCEL", "UNPAID"].includes(known.orderStatus) && known.paymentStatus !== "UNPAID" && Date.parse(known.updatedAt) > Date.parse(report.sourceAsOf)) issues.add("OUTCOMES_OUTDATED");
         if (known.returns.some(value => !allocation.returnReferences.includes(value.reference) || Date.parse(value.updatedAt) > Date.parse(report.sourceAsOf))) issues.add("RETURN_COVERAGE_INCOMPLETE");
       }
-      const outcome = known?.orderStatus === "CANCELLED" ? "CANCELLED" : allocation.disposition;
+      if (known?.paymentStatus === "UNKNOWN" && !["CANCELLED", "IN_CANCEL", "UNPAID"].includes(known.orderStatus)) issues.add("PAYMENT_OUTCOME_UNKNOWN");
+      const outcome = known && ["CANCELLED", "IN_CANCEL"].includes(known.orderStatus) ? "CANCELLED"
+        : known && (known.orderStatus === "UNPAID" || known.paymentStatus === "UNPAID") ? "UNPAID" : allocation.disposition;
       const eligible = outcome === "RETAINED" ? amount - refund : 0n;
       retained += eligible;
       if (known?.orderBuyerTotal !== undefined) {
