@@ -104,3 +104,27 @@ test("campaign performance accepts shop-object and shop-list responses without m
   response = {unexpected:[]};
   await assert.rejects(client.adsCampaignDaily("test-token","123",range.from,range.to,["987"]), /INVALID_ADS_CAMPAIGN_RESPONSE/);
 });
+
+test("campaign product settings preserve stable IDs and validate shop and campaign membership", async t => {
+  let response = { shop_id: "123", region: "ID", campaign_list: [{ campaign_id: "987", common_info: { item_id_list: ["9007199254740993"] } }] };
+  t.mock.method(globalThis, "fetch", async (url: URL) => {
+    assert.equal(url.pathname, "/api/v2/ads/get_product_level_campaign_setting_info");
+    assert.equal(url.searchParams.get("info_type_list"), "1");
+    assert.equal(url.searchParams.get("campaign_id_list"), "987");
+    return new Response(JSON.stringify({ response }));
+  });
+  const mapping = await client.adsCampaignSettings("test-token", "123", ["987"]);
+  assert.deepEqual(mapping.get("987"), ["9007199254740993"]);
+  const rows = normalizeCampaignAds([{shop_id:"123",region:"ID",campaign_list:[{campaign_id:"987",metrics_list:[metric]}]}], "123", ["987"], range, mapping);
+  assert.equal(rows[0].sourceMetrics?.directRevenue, "90000.0000");
+  assert.deepEqual(rows[0].sourceMetrics?.advertisedItemIds, ["9007199254740993"]);
+  await assert.rejects(client.adsCampaignSettings("test-token", "456", ["987"]), /ADS_SOURCE_SHOP_MISMATCH/);
+  response.campaign_list[0].campaign_id = "999";
+  await assert.rejects(client.adsCampaignSettings("test-token", "123", ["987"]), /INVALID_ADS_SOURCE_CAMPAIGN/);
+});
+
+test("campaign product metadata survives the import boundary", () => {
+  const [row] = normalizeCampaignAds([{shop_id:"123",region:"ID",campaign_list:[{campaign_id:"987",metrics_list:[metric]}]}], "123", ["987"], range, new Map([["987", ["9007199254740993"]]]));
+  const checked = validateAdImport({ version: 1, sourceShopId: "123", environment: "production", datasetKey: "shopee-api-test", datasetName: "Test", basis: "PLACED_TOTAL", reports: [row] }, now);
+  assert.deepEqual(checked.reports[0].sourceMetrics, { directRevenue: "90000.0000", advertisedItemIds: ["9007199254740993"] });
+});

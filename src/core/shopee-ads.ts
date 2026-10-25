@@ -49,11 +49,12 @@ export function normalizeAdsMetrics(values: unknown[], grain: "DAY" | "HOUR", ra
       continue;
     }
     reports.push({ campaignKey, campaignName, grain, start: key, end: new Date(start.getTime() + (grain === "DAY" ? 86_400_000 : 3_600_000)).toISOString(),
-      spend, revenue, sourceAsOf: range.now.toISOString(), attributionComplete: false, outcomesComplete: false, allocations: [] });
+      spend, revenue, sourceAsOf: range.now.toISOString(), attributionComplete: false, outcomesComplete: false, allocations: [],
+      ...(row.direct_gmv === undefined ? {} : { sourceMetrics: { directRevenue: money(row.direct_gmv) } }) });
   }
   return reports;
 }
-export function normalizeCampaignAds(values: unknown[], shopId: string, campaignIds: string[], range: AdsRange): AdsRow[] {
+export function normalizeCampaignAds(values: unknown[], shopId: string, campaignIds: string[], range: AdsRange, products: Map<string, string[]> = new Map()): AdsRow[] {
   const requested = new Set(campaignIds), seen = new Set<string>();
   const reports: AdsRow[] = [];
   for (const value of values) {
@@ -64,7 +65,8 @@ export function normalizeCampaignAds(values: unknown[], shopId: string, campaign
       if (!requested.has(id) || seen.has(id) || !Array.isArray(campaign.metrics_list)) throw new AppError("INVALID_ADS_SOURCE_CAMPAIGN", 502);
       seen.add(id);
       const name = typeof campaign.ad_name === "string" && campaign.ad_name.trim() ? campaign.ad_name.replace(/[\x00-\x1f\x7f]/g, " ").slice(0, 100) : `Campaign ${id}`;
-      reports.push(...normalizeAdsMetrics(campaign.metrics_list, "DAY", range, `campaign:${id}`, name));
+      reports.push(...normalizeAdsMetrics(campaign.metrics_list, "DAY", range, `campaign:${id}`, name).map(row => ({ ...row,
+        sourceMetrics: { ...row.sourceMetrics, ...(products.has(id) ? { advertisedItemIds: products.get(id)! } : {}) } })));
     }
   }
   if (seen.size !== requested.size) throw new AppError("INCOMPLETE_ADS_CAMPAIGNS", 502);

@@ -68,6 +68,21 @@ export class ShopeeClient {
     if (externalId(parsed.shop_id) !== shopId) throw new AppError("ADS_SOURCE_SHOP_MISMATCH", 502);
     return { more: parsed.has_next_page, ids: parsed.campaign_list.map(c => externalId(c.campaign_id)) };
   }
+  async adsCampaignSettings(accessToken: string, shopId: string, ids: string[]): Promise<Map<string, string[]>> {
+    const raw = await this.request("/api/v2/ads/get_product_level_campaign_setting_info", { accessToken, shopId,
+      query: { info_type_list: "1", campaign_id_list: ids.join(",") } });
+    const parsed = z.object({ shop_id: z.union([z.string(), z.number()]), region: z.literal("ID"),
+      campaign_list: z.array(z.object({ campaign_id: z.union([z.string(), z.number()]),
+        common_info: z.object({ item_id_list: z.array(z.union([z.string(), z.number()])) }) })) }).parse(raw);
+    if (externalId(parsed.shop_id) !== shopId) throw new AppError("ADS_SOURCE_SHOP_MISMATCH", 502);
+    const products = new Map<string, string[]>();
+    for (const campaign of parsed.campaign_list) {
+      const id = externalId(campaign.campaign_id);
+      if (!ids.includes(id) || products.has(id)) throw new AppError("INVALID_ADS_SOURCE_CAMPAIGN", 502);
+      products.set(id, [...new Set(campaign.common_info.item_id_list.map(externalId))]);
+    }
+    return products;
+  }
   async adsCampaignDaily(accessToken: string, shopId: string, from: string, to: string, ids: string[]) {
     const path = "/api/v2/ads/get_product_campaign_daily_performance";
     const raw = await this.request(path, { accessToken, shopId, query: { start_date: adsDate(from), end_date: adsDate(to), campaign_id_list: ids.join(",") } });
