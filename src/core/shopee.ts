@@ -43,7 +43,7 @@ export function parseSourceJson(text: string): unknown {
   // Node 24's JSON reviver context preserves the original source for large IDs.
   return JSON.parse(text, (key, value: unknown, context?: { source?: string }) => {
     if (typeof value !== "number") return value;
-    if ((!Number.isSafeInteger(value) && Number.isInteger(value)) || /(?:price|amount|fee|cost)$/.test(key)) {
+    if ((!Number.isSafeInteger(value) && Number.isInteger(value)) || /(?:price|amount|fee|cost|expense|gmv)$/.test(key)) {
       if (!context?.source) throw new AppError("LOSSLESS_JSON_UNAVAILABLE", 503);
       return context.source;
     }

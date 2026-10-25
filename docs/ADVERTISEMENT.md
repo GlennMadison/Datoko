@@ -6,9 +6,21 @@ For example, Rp1,000,000 of source revenue and Rp100,000 of advertising spend gi
 
 ## Source availability
 
-This connection does not yet have a verified automatic Shopee Ads attribution adapter. Use the private normalized JSON import for your own shops. It is an input format, not a claim that Shopee exports this exact JSON. Transform the source advertising report into this format while preserving its attribution window, revenue basis, timestamps, and conversion identities. If the provider exposes only aggregate metrics, import those with completeness false: Original ROAS is available, while Real ROAS stays unavailable.
+Automatic Shopee Ads sync runs through the existing authenticated minute worker, independently of order imports. Connected shops refresh on `SYNC_INTERVAL_MINUTES` (10 minutes by default); the dashboard also offers **Sync ads**, which queues a durable request. The page refreshes its displayed data every 30 seconds while connected.
 
-Uploads are explicitly labeled Imported source reports. The server can validate arithmetic, identities, stored orders, known return evidence, and freshness. It cannot establish the truth or completeness of an uploaded source report. Set completeness true only when the underlying source supports it. Reimport updated outcomes when late returns or other order updates occur.
+The adapter uses the official read-only endpoints:
+- [Daily shop performance](https://open.shopee.com/documents/v2/v2.ads.get_all_cpc_ads_daily_performance?module=117&type=1)
+- [Hourly shop performance](https://open.shopee.com/documents/v2/v2.ads.get_all_cpc_ads_hourly_performance?module=117&type=1)
+- [Product campaign IDs](https://open.shopee.com/documents/v2/v2.ads.get_product_level_campaign_id_list?module=117&type=1)
+- [Daily campaign performance](https://open.shopee.com/documents/v2/v2.ads.get_product_campaign_daily_performance?module=117&type=1)
+
+Daily shop and campaign reports refresh the trailing **30 WIB days** (retaining older saved records); hourly shop reports refresh **today and yesterday**. The API uses DD-MM-YYYY, and daily requests must span at least two dates and no more than a month. Future hourly placeholders are ignored; missing dates/hours remain missing. Late conversion revisions within the refresh window replace the existing source bucket instead of being added again. Unchanged source facts refresh their observed timestamp without producing duplicate audit revisions.
+
+Automatic reports use a reserved dataset, `shopee-api-cpc-7d-total-v1`, with `expense` as spend and `broad_gmv` as total sales attributed within seven days of a click. Original ROAS is the ratio of summed revenue to summed spend, never an average of provider ratios. Product campaigns and the shop total remain separate scopes. The application supports IDR shops in Indonesia.
+
+**These Ads reporting APIs do not expose order/item attribution IDs or cancellation/refund outcomes.** Their completeness flags are always false: they provide Original ROAS, while exact Real ROAS remains unavailable. Organic cancellations must never be subtracted from aggregate advertising sales. Private reports with verified attribution can still be imported into a separate dataset for Real ROAS.
+
+The sync uses the connected shop's encrypted credentials and existing refresh handling. It checks shop identity, environment, connection generation, source dates, decimals, duplicate slots, campaign pagination, response warnings and request budgets. Provider failures preserve saved records. Ads permission failures back off for six hours; other failures retry on the regular interval. A manual request can retry after permissions are enabled. Optional hourly/campaign failures have separate statuses and do not undo successful daily reports. No changes are made to campaigns, bids, budgets or ad settings.
 
 ## Import format
 

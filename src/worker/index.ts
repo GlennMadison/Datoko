@@ -3,6 +3,7 @@ import { closeDb } from "../server/db.ts";
 import { liveConfig } from "../server/env.ts";
 import { dispatchDueSyncs } from "../server/sync-dispatch.ts";
 import { runShopSync } from "../server/sync.ts";
+import { syncDueAds } from "../server/ads-sync.ts";
 import { publicErrorCode } from "../core/errors.ts";
 
 let activeQueue: Awaited<ReturnType<typeof getQueue>> | undefined;
@@ -14,6 +15,9 @@ async function main() {
   let stopping = false;
   const dispatch = async () => {
     const connectedShops = await dispatchDueSyncs();
+    const deadline = Date.now() + 120_000;
+    try { await syncDueAds({ shouldPause: () => Date.now() >= deadline }); }
+    catch (error) { console.error(JSON.stringify({ event: "ads_batch_failed", code: publicErrorCode(error) })); }
     console.log(JSON.stringify({ event: "worker_heartbeat", at: new Date().toISOString(), connectedShops }));
   };
   await boss.work<SyncJob>("datoko.sync", async jobs => {

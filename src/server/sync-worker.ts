@@ -6,6 +6,7 @@ import { withShopLock } from "./connections.ts";
 import { getQueue, transactionLock, type SyncJob } from "./queue.ts";
 import { dispatchDueSyncs } from "./sync-dispatch.ts";
 import { runShopSync } from "./sync.ts";
+import { syncDueAds } from "./ads-sync.ts";
 
 export async function runSyncBatch() {
   const config = liveConfig();
@@ -50,6 +51,10 @@ export async function runSyncBatch() {
         failed++;
       }
     }
-    return { connectedShops, completed, continued, failed };
+    // Ads has its own schedule and errors; order failures must not stop it.
+    let ads = { imported: 0, unchanged: 0, completed: 0, failed: 0 };
+    try { ads = await syncDueAds({ shouldPause: () => Date.now() >= deadline - 25_000 }); }
+    catch (error) { console.error(JSON.stringify({ event: "ads_batch_failed", code: publicErrorCode(error) })); ads.failed++; }
+    return { connectedShops, completed, continued, failed, ads };
   });
 }

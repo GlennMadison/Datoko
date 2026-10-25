@@ -7,7 +7,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || !new URL(databaseUrl).pathname.toLowerCase().includes("test")) throw new Error("Use a dedicated TEST_DATABASE_URL containing 'test'.");
 Object.assign(process.env, { DATABASE_URL: databaseUrl, DATOKO_MODE: "live", SHOPEE_ENV: "sandbox" });
 const { getDb, closeDb } = await import("../src/server/db.ts");
-const { importAdReport, advertisementForOwner, buildAdvertisementData } = await import("../src/server/ads.ts");
+const { importAdReport, importSyncedAdReport, advertisementForOwner, buildAdvertisementData } = await import("../src/server/ads.ts");
 
 test("private attributed reports survive revisions and reconcile to actual stored orders", async t => {
   const db = getDb(), ownerId = `ads-${randomUUID()}`, sourceShopId = String(Date.now());
@@ -104,6 +104,31 @@ test("private attributed reports survive revisions and reconcile to actual store
       const value = buildAdvertisementData(period, [], new Map(), [], null, "missing");
       assert.equal(value.campaignKey, "missing"); assert.equal(value.summary.realRoas, null);
     });
+
+    await t.test("automatic reports are isolated, idempotent, generation-guarded and never invent Real ROAS", async () => {
+      await db.shopConnection.create({ data: { shopId: shop.id, version: 1 } });
+      const at = new Date("2026-10-06T10:00:00Z");
+      const row = { ...input().reports[0], sourceAsOf: at.toISOString(), attributionComplete: false, outcomesComplete: false, allocations: [] };
+      const result = await importSyncedAdReport(shop, 1, [row], at);
+      assert.equal(result.imported, 1);
+      const newer = new Date(at.getTime() + 60_000);
+      const replay = await importSyncedAdReport(shop, 1, [{ ...row, sourceAsOf: newer.toISOString() }], newer);
+      assert.equal(replay.unchanged, 1);
+      const where = { report: { dataset: { shopId: shop.id, sourceKey: result.datasetKey } } };
+      assert.equal(await db.adReportRevision.count({ where }), 1);
+      const latest = await advertisementForOwner(ownerId, period);
+      assert.equal(latest.datasetKey, result.datasetKey);
+      assert.equal(latest.summary.originalRoas, "10.00");
+      assert.equal(latest.summary.realRoas, null);
+      assert.equal((await advertisementForOwner(ownerId, period, { dataset: "source-test" })).datasetKey, "source-test");
+      const correctedAt = new Date(newer.getTime() + 60_000);
+      assert.equal((await importSyncedAdReport(shop, 1, [{ ...row, revenue: "900000", sourceAsOf: correctedAt.toISOString() }], correctedAt)).imported, 1);
+      assert.equal(await db.adReportRevision.count({ where }), 2);
+      await assert.rejects(importSyncedAdReport(shop, 2, [row], at), /CONNECTION_CHANGED/);
+      await assert.rejects(importAdReport(ownerId, { ...input(), datasetKey: result.datasetKey }), /RESERVED_ADS_DATASET/);
+      await db.shopConnection.update({ where: { shopId: shop.id }, data: { status: "DISCONNECTED" } });
+      await assert.rejects(importSyncedAdReport(shop, 1, [row], at), /CONNECTION_CHANGED/);
+    });
   } finally {
     await db.adReportBucket.deleteMany({ where: { dataset: { shopId: shop.id } } });
     await db.adDataset.deleteMany({ where: { shopId: shop.id } });
@@ -111,6 +136,7 @@ test("private attributed reports survive revisions and reconcile to actual store
     await db.orderItem.deleteMany({ where: { orderId: order.id } });
     await db.order.delete({ where: { id: order.id } });
     await db.productVariant.delete({ where: { id: variant.id } });
+    await db.shopConnection.deleteMany({ where: { shopId: shop.id } });
     await db.shop.delete({ where: { id: shop.id } });
     await db.user.delete({ where: { id: ownerId } });
     await closeDb();
