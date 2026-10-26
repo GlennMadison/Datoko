@@ -1,3 +1,4 @@
+import { allocateProductAds, type ProductAdSpend } from "../core/product-profit.ts";
 import { getDb } from "./db.ts";
 import { getConfig, isDemo } from "./env.ts";
 import { transactionLock } from "./queue.ts";
@@ -82,6 +83,7 @@ export type AdvertisementData = {
   mode: "demo" | "live"; period: ReportPeriod; datasets: { key: string; name: string; basis: string }[];
   datasetKey: string | null; campaignKey: string; basis: string | null;
   campaigns: { key: string; name: string; spend: string; originalRoas: string | null; realRoas: string | null; estimatedRoas?: string | null }[];
+  productSpend?: ProductAdSpend;
   estimate?: AdsEstimate; summary: RoasResult; points: { date: string; original: number | null; real: number | null; estimated: number | null; spend: number | null; revenue: number | null }[];
   coverage: { expected: number; available: number }; chartUnavailable: string | null;
   sync?: { connected: boolean; lastSuccessAt: string | null; errorCode: string | null; hourlyErrorCode: string | null; campaignErrorCode: string | null; pending: boolean; intervalMinutes: number };
@@ -135,7 +137,7 @@ export function buildAdvertisementData(period: ReportPeriod, reports: StoredRepo
     return { key, name: all[0].campaignName, spend: values.spend, originalRoas: values.originalRoas, realRoas: values.realRoas, ...(outcomes ? { estimatedRoas: estimateAds(rows, outcomes, sourceCoverage(rows, resolved, chosenGrain).available === sourceCoverage(rows, resolved, chosenGrain).expected, basis).roas } : {}) };
   });
   if (!campaigns.some(row => row.key === campaignKey)) campaigns.push({ key: campaignKey, name: "Selected campaign (no data in this range)", spend: "0.0000", originalRoas: null, realRoas: null });
-  return { mode, estimate, period: resolved, datasets, datasetKey, campaignKey, basis: datasets.find(row => row.key === datasetKey)?.basis ?? null, campaigns, summary, points, coverage, chartUnavailable };
+  return { mode, estimate, ...(campaignKey === "shop" ? { productSpend: allocateProductAds(source, reports) } : {}), period: resolved, datasets, datasetKey, campaignKey, basis: datasets.find(row => row.key === datasetKey)?.basis ?? null, campaigns, summary, points, coverage, chartUnavailable };
 }
 
 function demoAdvertisement(period: ReportPeriod, requestedCampaign?: string): AdvertisementData {
@@ -151,7 +153,8 @@ function demoAdvertisement(period: ReportPeriod, requestedCampaign?: string): Ad
       allocations: matching.map(order => ({ key: order.id, orderSn: order.orderSn, lineKey: "demo-line", amount: order.merchandise, disposition: order.status === "CANCELLED" ? "CANCELLED" : "RETAINED", confirmedRefund: order.hasReturn ? "40000" : "0", provisional: order.status !== "COMPLETED" && order.status !== "CANCELLED", returnReferences: [] })),
     };
   });
-  return buildAdvertisementData(period, reports, evidence, [{ key: "sample", name: "Illustrative ad report", basis: "PLACED_TOTAL" }], "sample", requestedCampaign, "demo");
+  const campaigns: StoredReport[] = reports.map(row => ({ ...row, campaignKey: "campaign:sample", campaignName: "Desktop speaker stand", sourceMetrics: { advertisedItemIds: ["1000"] } }));
+  return buildAdvertisementData(period, [...reports, ...campaigns], evidence, [{ key: "sample", name: "Illustrative ad report", basis: "PLACED_TOTAL" }], "sample", requestedCampaign, "demo");
 }
 
 async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, period: ReportPeriod, filters: { dataset?: string; campaign?: string }): Promise<AdvertisementData> {
