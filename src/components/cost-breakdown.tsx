@@ -19,7 +19,7 @@ export function CostBreakdown({ summary = emptySummary, adSpend, adsComplete }: 
   const slices = data.slices.map((item, index) => ({ ...item, color: colors[item.key] ?? extraColors[index % extraColors.length] }));
   const partial = summary.covered < summary.eligible || !adsComplete;
   return <Card role="region" aria-label="Cost breakdown" className="mb-5">
-    <div className="card-heading"><div><h2>Cost breakdown</h2><p>Share of recorded costs in the selected period{partial ? " � partial data" : ""}</p></div></div>
+    <div className="card-heading"><div><h2>Cost breakdown</h2><p>Share of recorded costs in the selected period{partial ? " · partial data" : ""}</p></div></div>
     {slices.length ? <div className="grid min-w-0 items-center gap-5 px-5 pb-5 md:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.5fr)]">
       <div className="relative min-w-0">
         <div role="img" aria-label="Cost breakdown pie chart. Exact amounts and percentages follow in the cost list.">
@@ -43,7 +43,7 @@ export function CostBreakdown({ summary = emptySummary, adSpend, adsComplete }: 
         <ul aria-label="Cost amounts and percentages" className="divide-y divide-border/60">
           {slices.map(item => <li key={item.key} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
             <span className="flex min-w-0 items-center gap-2.5 text-xs"><i aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }}/><span>{item.label}</span></span>
-            <span className="shrink-0 text-right"><strong className="numeric block text-xs font-medium">{rupiah(item.value)}</strong><span className="block text-[10px] leading-relaxed text-muted-foreground">{percentage(item.percentage)} of costs{item.salesPercentage !== null ? ` � ${percentage(item.salesPercentage)} of sales` : ""}</span></span>
+            <span className="shrink-0 text-right"><strong className="numeric block text-xs font-medium">{rupiah(item.value)}</strong><span className="block text-[10px] leading-relaxed text-muted-foreground">{percentage(item.percentage)} of costs{item.salesPercentage !== null ? ` · ${percentage(item.salesPercentage)} of sales` : ""}</span></span>
           </li>)}
         </ul>
       </div>
