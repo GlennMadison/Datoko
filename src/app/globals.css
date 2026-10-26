@@ -42,21 +42,21 @@
 
 :root {
   color-scheme: light dark;
-  --background: light-dark(#f8faf9, #111413);
-  --foreground: light-dark(#202b25, #e7ebe8);
-  --card: light-dark(#ffffff, #1b1f1d);
-  --sidebar: light-dark(#f0f4f1, #151917);
+  --background: light-dark(#f8faf9, #121212);
+  --foreground: light-dark(#202b25, #e8e8e8);
+  --card: light-dark(#ffffff, #1c1c1c);
+  --sidebar: light-dark(#f0f4f1, #171717);
   --primary: light-dark(#217451, #8bdbb4);
   --primary-foreground: light-dark(#ffffff, #112a1d);
-  --secondary: light-dark(#edf2ee, #252b28);
-  --muted: light-dark(#69776d, #a7b0aa);
-  --line: light-dark(#e0e8e2, #363c38);
-  --input-border: light-dark(#d6e0d9, #454e48);
-  --accent-soft: light-dark(#e3eee6, #28362e);
+  --secondary: light-dark(#edf2ee, #262626);
+  --muted: light-dark(#69776d, #ababab);
+  --line: light-dark(#e0e8e2, #363636);
+  --input-border: light-dark(#d6e0d9, #474747);
+  --accent-soft: light-dark(#e3eee6, #28312c);
   --danger: light-dark(#b6463d, #f0a399);
   --warning: light-dark(#946018, #e4bc77);
   --chart-primary: var(--primary);
-  --chart-secondary: light-dark(#7f8c84, #a0aaa4);
+  --chart-secondary: light-dark(#7f8c84, #a6a6a6);
   --chart-refund: light-dark(#c37545, #eab18a);
   --radius: 0.625rem;
   /* Existing financial and chart views share the same semantic theme. */

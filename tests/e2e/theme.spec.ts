@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 const storageKey = "datoko.theme.v1";
 const background = (page: Page) => page.locator("body");
 const light = "rgb(248, 250, 249)";
-const dark = "rgb(17, 20, 19)";
+const dark = "rgb(18, 18, 18)";
 
 // Check the rendered palette, not just the preference attribute.
 test("System is the default and follows OS changes while the page stays open", async ({ page }) => {
@@ -85,11 +85,11 @@ test("dark mode covers dashboard, date picker, charts, and account pages without
   await page.getByRole("button", { name: /^Date range:/ }).click();
   const picker = page.getByRole("dialog", { name: "Choose reporting dates" });
   await expect(picker).toBeVisible();
-  await expect(picker).toHaveCSS("background-color", "rgb(27, 31, 29)");
+  await expect(picker).toHaveCSS("background-color", "rgb(28, 28, 28)");
   await page.screenshot({ path: testInfo.outputPath("dark-date-picker.png"), fullPage: true });
   await page.keyboard.press("Escape");
   const plot = page.locator(".report-chart");
-  await expect(plot.locator(".recharts-cartesian-axis-tick-value").first()).toHaveCSS("fill", "rgb(167, 176, 170)");
+  await expect(plot.locator(".recharts-cartesian-axis-tick-value").first()).toHaveCSS("fill", "rgb(171, 171, 171)");
   await expect(plot.locator(".recharts-area-curve")).toHaveCSS("stroke", "rgb(139, 219, 180)");
   await page.screenshot({ path: testInfo.outputPath("dark-overview.png"), fullPage: true });
   for (const route of ["/orders", "/products", "/returns", "/advertisement", "/settings/integrations", "/settings/sync", "/login", "/signup", "/setup"]) {
