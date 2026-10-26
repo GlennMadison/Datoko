@@ -71,7 +71,7 @@ export function demoDashboard(period: ReportPeriod): DashboardData {
   }));
   return {
     mode: "demo", shop: { id: "demo", name: "Sample workspace", sourceShopId: "—", status: "NOT_CONNECTED", environment: "sandbox" },
-    metrics: { sales: completed.reduce((sum, order) => sum + order.total, 0), placedValue: orders.reduce((sum, order) => sum + order.total, 0), orders: orders.length, completed: completed.length, cancelled: orders.filter(order => order.status === "CANCELLED").length, profit: null, refunds: returns.reduce((sum, value) => sum + value.confirmedRefund, 0) },
+    metrics: { sales: completed.reduce((sum, order) => sum + order.total, 0), placedValue: orders.reduce((sum, order) => sum + order.total, 0), orders: orders.length, completed: completed.length, cancelled: orders.filter(order => order.status === "CANCELLED").length, profit: costSummary.profit === null ? null : Number(costSummary.profit), refunds: returns.reduce((sum, value) => sum + value.confirmedRefund, 0) },
     trend: activityTrend(period, orders, returns.map(value => ({ ...value, confirmedRefund: String(value.confirmedRefund) }))),
     orders, products: groupProducts(products), costSummary,
     returns,

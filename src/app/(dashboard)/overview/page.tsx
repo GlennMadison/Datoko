@@ -29,7 +29,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const cards = [
     { label: "Completed sales", value: rupiah(data.metrics.sales), note: "Merchandise before refunds and fees", icon: "money" },
     { label: "Orders placed", value: number(data.metrics.orders), note: `${data.metrics.completed} completed / ${data.metrics.cancelled} cancelled (all orders)`, icon: "orders" },
-    { label: "Net profit", value: rupiah(netProfit), note: !adsComplete ? "Waiting for complete ad spend data" : data.profitSummary ? `${data.profitSummary.covered} / ${data.profitSummary.eligible} completed orders · ${data.profitSummary.estimated ? "includes estimated costs" : "after COGS, Shopee deductions and ads"}` : "Waiting for payouts and COGS", icon: "products" },
+    { label: "Net profit", value: rupiah(netProfit), note: !adsComplete ? "Waiting for complete ad spend data" : data.profitSummary ? `${data.profitSummary.covered} / ${data.profitSummary.eligible} completed orders · ${data.profitSummary.estimated ? "includes estimated costs" : "after COGS, Shopee deductions and ads"}` : demo && netProfit !== null ? "Sample payouts, COGS and ad spend" : "Waiting for payouts and COGS", icon: "products" },
     { label: "Ad spend", value: rupiah(adSpend === null ? null : Number(adSpend)), note: adSpend === null ? "Waiting for ad sync" : !adsComplete ? "Partial data for the selected period" : "Shop advertising in the selected period", icon: "advertisement" },
   ];
   const topProducts = [...data.products].sort((a, b) => b.units - a.units).slice(0, 4);

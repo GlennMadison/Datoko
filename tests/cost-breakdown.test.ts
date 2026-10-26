@@ -5,7 +5,7 @@ import { normalizeSettlement, calculateOrderProfit, readSettlement, type Settlem
 
 function fixture(extra: Record<string, unknown> = {}, cost: string | null = "10000", status = "COMPLETED") {
   const settlement = normalizeSettlement({ order_sn: "order1", order_income: {
-    escrow_amount: "70000", escrow_amount_after_adjustment: "65000", commission_fee: "6000",
+    escrow_amount: "82000", escrow_amount_after_adjustment: "77000", commission_fee: "6000",
     service_fee: "4000", seller_transaction_fee: "2000", order_ams_commission_fee: "3000",
     seller_order_processing_fee: "1250", campaign_fee: "750", withholding_tax: "1000", seller_return_refund: "-5000", ...extra,
   } }, "order1");
@@ -19,7 +19,7 @@ test("each Shopee fee, affiliate, COGS, refunds and shop advertising have separa
   assert.equal(result.total, "50000.0000");
   assert.equal(result.salesPercentage, 50);
   assert.equal(result.slices.find(item => item.key === "cogs")?.amount, "20000.0000");
-  assert.equal(result.slices.find(item => item.key === "ads")?.percentage, 14);
+  assert.equal(result.slices.find(item => item.key === "ads")?.percentage, 7);
   assert.equal(result.slices.find(item => item.key === "ads")?.salesPercentage, 7);
   assert.equal(result.slices.find(item => item.key === "seller_order_processing_fee")?.amount, "1250.0000");
   assert.equal(result.slices.find(item => item.key === "campaign_fee")?.amount, "750.0000");
@@ -67,7 +67,7 @@ test("zero costs and missing ad data do not produce NaN or imply known advertisi
 });
 
 test("credits remain separate from positive pie slices and zero-valued fees are hidden", () => {
-  const order = fixture({ service_fee: "-4000", campaign_fee: "0" });
+  const order = fixture({ service_fee: "-4000", campaign_fee: "0", escrow_amount_after_adjustment: "85750" });
   const result = costBreakdown(summarizeOrderCosts([order]), "0");
   assert.equal(result.credits.find(item => item.key === "service")?.amount, "-4000.0000");
   assert.equal(result.slices.some(item => ["service", "campaign_fee", "ads"].includes(item.key)), false);
@@ -79,11 +79,61 @@ test("fee details are exact, validated against their aggregate, and do not chang
   assert.equal(order.settlement.feeDetails!.seller_order_processing_fee, "1250.1234");
   assert.equal(order.settlement.other, "2250.1235");
   assert.deepEqual(readSettlement(order.settlement), order.settlement);
-  assert.equal(order.profit.profit, "45000.0000");
+  assert.equal(order.profit.profit, "57000.0000");
   for (const details of [{ campaign_fee: "1" }, { campaign_fee: "invalid" }, { untrusted: "0" }, []]) {
     assert.equal(readSettlement({ ...order.settlement, feeDetails: details }), null);
   }
   const withoutDetails: Settlement = { ...order.settlement };
   delete withoutDetails.feeDetails;
-  assert.equal(readSettlement(withoutDetails)?.payout, "65000.0000");
+  assert.equal(readSettlement(withoutDetails)?.payout, "77000.0000");
+});
+
+test("clean profit uses the same settled payout minus COGS and ads as Overview", () => {
+  const summary = summarizeOrderCosts([fixture()]);
+  const result = costBreakdown(summary, "7000");
+  assert.equal(summary.profit, "57000.0000");
+  assert.equal(result.cleanProfit, "50000.0000");
+  assert.equal(result.profitPercentage, 50);
+  assert.equal(result.chartTotal, "100000.0000");
+  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 50);
+});
+
+test("unitemized payout deductions reconcile the pie without inflating clean profit", () => {
+  const result = costBreakdown(summarizeOrderCosts([fixture({ escrow_amount_after_adjustment: "65000" })]), "7000");
+  assert.equal(result.cleanProfit, "38000.0000");
+  assert.equal(result.profitPercentage, 38);
+  assert.equal(result.slices.find(item => item.key === "other_deductions")?.amount, "12000.0000");
+  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 38);
+  assert.equal(result.total, "62000.0000");
+  assert.equal(result.chartTotal, "100000.0000");
+});
+
+test("payout credits preserve actual profit and clearly distinguish sales margin from pie share", () => {
+  const result = costBreakdown(summarizeOrderCosts([fixture({ escrow_amount_after_adjustment: "87000" })]), "7000");
+  assert.equal(result.cleanProfit, "60000.0000");
+  assert.equal(result.profitPercentage, 60);
+  assert.equal(result.otherIncome, "10000.0000");
+  assert.equal(result.chartTotal, "110000.0000");
+  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 54.55);
+});
+
+test("losses and zero profit never become positive pie slices", () => {
+  const summary = summarizeOrderCosts([fixture()]);
+  const loss = costBreakdown(summary, "70000");
+  assert.equal(loss.cleanProfit, "-13000.0000");
+  assert.equal(loss.profitPercentage, -13);
+  assert.equal(loss.slices.some(item => item.key === "profit"), false);
+  assert.ok(loss.slices.every(item => item.value > 0));
+  const zero = costBreakdown(summary, "57000");
+  assert.equal(zero.cleanProfit, "0.0000");
+  assert.equal(zero.slices.find(item => item.key === "profit")?.percentage, 0);
+});
+
+test("incomplete ad coverage and missing order costs withhold profit rather than overstate it", () => {
+  const summary = summarizeOrderCosts([fixture()]);
+  for (const result of [costBreakdown(summary, null), costBreakdown(summary, "1000", false), costBreakdown(summarizeOrderCosts([fixture({}, null)]), "1000")]) {
+    assert.equal(result.cleanProfit, null);
+    assert.equal(result.profitPercentage, null);
+    assert.equal(result.slices.some(item => item.key === "profit"), false);
+  }
 });
