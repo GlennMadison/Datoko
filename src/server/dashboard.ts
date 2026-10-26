@@ -1,5 +1,6 @@
+import { summarizeOrderCosts, type CostSummary } from "../core/cost-breakdown.ts";
 import { cancellationBreakdown } from "../core/cancellations.ts";
-import { calculateOrderProfit, readSettlement, type OrderProfit } from "../core/profit.ts";
+import { calculateOrderProfit, normalizeSettlement, readSettlement, type OrderProfit } from "../core/profit.ts";
 import { amountString, amountUnits } from "../core/money.ts";
 import { groupProducts, type ProductGroup, type ProductVariantRow } from "../core/products.ts";
 import { getDb } from "./db.ts";
@@ -28,6 +29,7 @@ export type DashboardData = {
   coverageFrom: string | null;
   ordersCheckpoint: string | null;
   financeReady: boolean;
+  costSummary?: CostSummary;
   returnsReady?: boolean;
   returnsError?: string | null;
   cancellations?: ReturnType<typeof cancellationBreakdown>;
@@ -55,11 +57,23 @@ export function demoDashboard(period: ReportPeriod): DashboardData {
   const returns = [{ id: "sample-return", returnSn: "RETURN-DEMO-001", orderSn: allOrders[3].orderSn, status: "RESOLVED", reportedAmount: 40000, confirmedRefund: 40000, updatedAt: new Date(Math.min(Date.now() - 1000, todayStart + 8 * 3_600_000)).toISOString() }].filter(value => periodContains(period, value.updatedAt));
   for (const product of products) product.units = orders.filter(order => order.sku === product.sku && order.status === "COMPLETED").reduce((sum, order) => sum + order.quantity, 0);
   const completed = orders.filter(order => order.status === "COMPLETED");
+  const costSummary = summarizeOrderCosts(completed.map(order => {
+    const share = (percent: number) => amountString(amountUnits(order.merchandise) * BigInt(percent) / 100n);
+    const refund = order.hasReturn ? 40000n * 10000n : 0n;
+    const settlement = normalizeSettlement({ order_sn: order.orderSn, order_income: {
+      escrow_amount: amountString(amountUnits(order.merchandise) * 85n / 100n - 1250n * 10000n - refund),
+      commission_fee: share(6), service_fee: share(4), seller_transaction_fee: share(2),
+      order_ams_commission_fee: share(3), seller_order_processing_fee: "1250", seller_return_refund: amountString(-refund),
+    } }, order.orderSn);
+    const product = products.find(product => product.sku === order.sku)!;
+    const profit = calculateOrderProfit({ status: order.status, items: [{ quantity: order.quantity, costSnapshot: product.cost === null ? null : String(product.cost) }] }, settlement);
+    return { status: order.status, merchandise: order.merchandise, profit, settlement };
+  }));
   return {
-    mode: "demo", shop: { id: "demo", name: "Sample workspace", sourceShopId: "—", status: "NOT_CONNECTED", environment: "sandbox" },
+    mode: "demo", shop: { id: "demo", name: "Sample workspace", sourceShopId: "-", status: "NOT_CONNECTED", environment: "sandbox" },
     metrics: { sales: completed.reduce((sum, order) => sum + order.total, 0), placedValue: orders.reduce((sum, order) => sum + order.total, 0), orders: orders.length, completed: completed.length, cancelled: orders.filter(order => order.status === "CANCELLED").length, profit: null, refunds: returns.reduce((sum, value) => sum + value.confirmedRefund, 0) },
     trend: activityTrend(period, orders, returns.map(value => ({ ...value, confirmedRefund: String(value.confirmedRefund) }))),
-    orders, products: groupProducts(products),
+    orders, products: groupProducts(products), costSummary,
     returns,
     runs: [], lastSyncedAt: null, coverageFrom: null, ordersCheckpoint: null, financeReady: false,
   };
@@ -100,6 +114,10 @@ export async function getDashboardData(selection: ReportPeriod | number = 30): P
   const eligible = orders.filter(order => order.status === "COMPLETED");
   const covered = eligible.map(order => profits.get(order.id)!).filter(result => result.profit !== null);
   const sum = (key: "profit" | "payout" | "cogs") => Number(amountString(covered.reduce((total, result) => total + amountUnits(result[key]!), 0n)));
+  const costSummary = summarizeOrderCosts(orders.map(order => ({
+    status: order.status, merchandise: order.merchandiseAmount.toString(),
+    profit: profits.get(order.id)!, settlement: readSettlement(order.financialSnapshots[0]?.amounts),
+  })));
   const financeState = shop.syncStates.find(state => state.resource === "finance");
   const profitSummary = { covered: covered.length, eligible: eligible.length, estimated: covered.filter(result => result.quality === "ESTIMATED").length, payout: sum("payout"), cogs: sum("cogs"), lastSyncedAt: financeState?.lastSuccessAt?.toISOString() ?? null, error: financeState?.lastErrorCode ?? null };
   const trend = activityTrend(period, orders.map(order => ({ createdAt: order.sourceCreatedAt.toISOString(), profit: profits.get(order.id)?.profit ?? null, status: order.status, merchandise: order.merchandiseAmount.toString(), quantity: order.items.reduce((sum, item) => sum + item.quantity, 0) })), returns.map(value => ({ updatedAt: value.sourceUpdatedAt.toISOString(), confirmedRefund: value.confirmedRefund?.toString() ?? null })));
@@ -112,7 +130,7 @@ export async function getDashboardData(selection: ReportPeriod | number = 30): P
   return {
     mode: "live", shop: { id: shop.id, name: shop.name, sourceShopId: shop.sourceShopId, status: shop.connection?.status ?? "DISCONNECTED", environment: shop.environment },
     metrics: { orders: orders.length, completed: orders.filter(order => order.status === "COMPLETED").length, cancelled: orders.filter(order => order.status === "CANCELLED").length, sales: orders.filter(order => order.status === "COMPLETED").reduce((sum, order) => sum + Number(order.merchandiseAmount), 0), placedValue: orders.reduce((sum, order) => sum + Number(order.totalAmount), 0), profit: covered.length ? sum("profit") : eligible.length ? null : 0, refunds: returnsReady ? returns.reduce((sum, value) => sum + Number(value.confirmedRefund ?? 0), 0) : null },
-    profitSummary, returnsReady, returnsError: returnState?.lastErrorCode ?? null, cancellations,
+    costSummary, profitSummary, returnsReady, returnsError: returnState?.lastErrorCode ?? null, cancellations,
     trend,
     orders: orders.map(order => ({ id: order.id, orderSn: order.orderSn, name: order.items[0]?.name ?? "Order", variationName: order.items[0]?.variationName ?? null, sku: order.items[0]?.sku ?? "-", quantity: order.items.reduce((sum, item) => sum + item.quantity, 0), total: Number(order.totalAmount), merchandise: order.merchandiseAmount.toString(), status: order.status, createdAt: order.sourceCreatedAt.toISOString(), hasReturn: order.returns.length > 0, costMissing: order.items.some(item => item.costSnapshot === null), profit: profits.get(order.id)!.profit === null ? null : Number(profits.get(order.id)!.profit), profitQuality: profits.get(order.id)!.quality, payout: profits.get(order.id)!.payout === null ? null : Number(profits.get(order.id)!.payout), cogs: profits.get(order.id)!.cogs === null ? null : Number(profits.get(order.id)!.cogs) })),
     products: groupProducts(variants.map(variant => ({ id: variant.id, shopId: variant.shopId, sourceItemId: variant.sourceItemId, sourceModelId: variant.sourceModelId, name: variant.orderItems[0]?.name ?? variant.name, variationName: variant.variationName, nameObservedAt: (variant.orderItems[0]?.order.sourceCreatedAt ?? variant.createdAt).toISOString(), sku: variant.sku ?? "No SKU", cost: variant.costs[0] ? Number(variant.costs[0].amount) : null, units: unitsByVariant.get(variant.id) ?? 0 }))),

@@ -1,9 +1,11 @@
 import { amountString, amountUnits } from "./money.ts";
 import { AppError } from "./errors.ts";
+import { OTHER_SHOPEE_FEES } from "./cost-breakdown.ts";
 
 export type Settlement = {
   payout: string; commission: string; service: string; transaction: string;
   affiliate: string; other: string; refunds: string; adjustment: string;
+  feeDetails?: Record<string, string>;
 };
 
 // Payout already includes fees, refunds and adjustments. Never deduct twice.
@@ -23,8 +25,9 @@ export function normalizeSettlement(raw: Record<string, unknown>, orderSn: strin
   }
   const base = read("escrow_amount", true);
   const payout = source.escrow_amount_after_adjustment == null ? base : read("escrow_amount_after_adjustment", true);
-  const other = ["seller_order_processing_fee", "campaign_fee", "escrow_tax", "withholding_tax", "fbs_fee", "sales_tax_on_lvg", "final_escrow_product_gst", "vat_on_imported_goods", "withholding_vat_tax", "withholding_pit_tax", "withholding_cit_tax"].reduce((sum, key) => sum + read(key), 0n);
-  return { payout: amountString(payout), commission: amountString(read("commission_fee")), service: amountString(read("service_fee")), transaction: amountString(read("seller_transaction_fee")), affiliate: amountString(read("order_ams_commission_fee")), other: amountString(other), refunds: amountString(read("seller_return_refund") < 0n ? -read("seller_return_refund") : 0n), adjustment: amountString(payout - base) };
+  const feeDetails = Object.fromEntries(Object.keys(OTHER_SHOPEE_FEES).map(key => [key, amountString(read(key))]));
+  const other = Object.values(feeDetails).reduce((sum, amount) => sum + amountUnits(amount), 0n);
+  return { feeDetails, payout: amountString(payout), commission: amountString(read("commission_fee")), service: amountString(read("service_fee")), transaction: amountString(read("seller_transaction_fee")), affiliate: amountString(read("order_ams_commission_fee")), other: amountString(other), refunds: amountString(read("seller_return_refund") < 0n ? -read("seller_return_refund") : 0n), adjustment: amountString(payout - base) };
 }
 
 export function readSettlement(value: unknown): Settlement | null {
@@ -35,6 +38,16 @@ export function readSettlement(value: unknown): Settlement | null {
     for (const key of keys) {
       if (typeof source[key] !== "string") return null;
       amountUnits(source[key] as string);
+    }
+    if (source.feeDetails !== undefined) {
+      const details = source.feeDetails;
+      if (!details || typeof details !== "object" || Array.isArray(details)) return null;
+      let total = 0n;
+      for (const [key, amount] of Object.entries(details)) {
+        if (!(Object.hasOwn(OTHER_SHOPEE_FEES, key)) || typeof amount !== "string") return null;
+        total += amountUnits(amount);
+      }
+      if (total !== amountUnits(source.other as string)) return null;
     }
     return source as Settlement;
   } catch { return null; }
