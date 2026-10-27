@@ -36,3 +36,34 @@ export function AutoSync({ shopId, enabled, lastSyncedAt }: { shopId?: string; e
   }, [enabled, shopId, lastSyncedAt, router]);
   return null;
 }
+
+export function HistorySyncButton({ shopId, disabled, active, complete, runId }: { shopId?: string; disabled: boolean; active: boolean; complete: boolean; runId?: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [queued, setQueued] = useState<string | null>(null);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (!active && !queued) return;
+    const timer = setInterval(() => router.refresh(), 30_000);
+    return () => clearInterval(timer);
+  }, [active, queued, router]);
+  useEffect(() => { if (queued && runId === queued) setQueued(null); }, [queued, runId]);
+  async function syncHistory() {
+    if (!shopId || busy || active || queued) return;
+    setBusy(true); setMessage("");
+    try {
+      const response = await fetch(`/api/shops/${encodeURIComponent(shopId)}/sync?scope=history`, { method: "POST" });
+      if (!response.ok) throw new Error();
+      setQueued((await response.json()).runId);
+      setMessage("History sync queued. Progress updates here automatically.");
+      router.refresh();
+    } catch { setMessage("Could not start history sync. Check your connection and try again."); }
+    finally { setBusy(false); }
+  }
+  return <div className="sync-action">
+    <Button variant="outline" disabled={disabled || !shopId || busy || !!queued || active || complete} aria-busy={busy || !!queued || active} onClick={syncHistory}>
+      <Icon name="sync" size={15}/>{busy ? "Queuing…" : active || queued ? "History sync in progress" : complete ? "History checked" : "Sync all history"}
+    </Button>
+    {message && <span className="action-message" role="status">{message}</span>}
+  </div>;
+}

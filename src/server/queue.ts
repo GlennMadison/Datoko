@@ -33,7 +33,7 @@ export async function transactionLock(tx: Prisma.TransactionClient, key: string)
 
 export async function enqueueSync(tx: Prisma.TransactionClient, boss: PgBoss, input: { shopId: string; generation: number; reason: string }): Promise<{ runId: string; jobId: string }> {
   await transactionLock(tx, `sync-request:${input.shopId}`);
-  const existing = await tx.syncRun.findFirst({ where: { shopId: input.shopId, generation: input.generation, status: { in: ["QUEUED", "RUNNING", "RETRYING"] } }, orderBy: { createdAt: "desc" } });
+  const existing = await tx.syncRun.findFirst({ where: { shopId: input.shopId, generation: input.generation, reason: input.reason === "HISTORICAL" ? "HISTORICAL" : { not: "HISTORICAL" }, status: { in: ["QUEUED", "RUNNING", "RETRYING"] } }, orderBy: { createdAt: "desc" } });
   if (existing?.jobId) {
     const job = await boss.getJobById("datoko.sync", existing.jobId);
     if (job && ["created", "retry", "active"].includes(job.state)) return { runId: existing.id, jobId: existing.jobId };

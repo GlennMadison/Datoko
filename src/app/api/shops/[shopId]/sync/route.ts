@@ -1,3 +1,4 @@
+import { HISTORY_RESOURCE, HISTORY_START } from "@/core/history-sync";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/server/auth";
 import { getDb } from "@/server/db";
@@ -17,8 +18,13 @@ export async function POST(request: Request, context: { params: Promise<{ shopId
     const shop = await db.shop.findFirst({ where: { id: shopId, ownerId: actor.ownerId, environment: getConfig().SHOPEE_ENV }, include: { connection: true } });
     if (!shop) throw new AppError("SHOP_NOT_FOUND", 404);
     if (shop.connection?.status !== "CONNECTED") throw new AppError("SHOPEE_RECONNECT_REQUIRED", 409);
+    const history = new URL(request.url).searchParams.get("scope") === "history";
+    if (history) {
+      const state = await db.syncState.findUnique({ where: { shopId_resource: { shopId, resource: HISTORY_RESOURCE } } });
+      if (state?.checkpoint && state.checkpoint <= HISTORY_START) throw new AppError("HISTORY_ALREADY_CHECKED", 409);
+    }
     const boss = await getQueue();
-    const result = await db.$transaction(tx => enqueueSync(tx, boss, { shopId, generation: shop.connection!.version, reason: "MANUAL" }));
+    const result = await db.$transaction(tx => enqueueSync(tx, boss, { shopId, generation: shop.connection!.version, reason: history ? "HISTORICAL" : "MANUAL" }));
     return NextResponse.json(result, { status: 202, headers: { "Cache-Control": "no-store" } });
   } catch (error) { return errorResponse(error); }
 }
