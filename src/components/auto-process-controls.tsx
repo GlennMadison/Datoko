@@ -54,7 +54,7 @@ function CourierRow({ channel, initial, addresses, shopId, disabled }: {
   const locked = disabled || pending;
   return <div className="border-t px-5 py-5 first:border-t-0 sm:px-6">
     <div className="flex items-center justify-between gap-4">
-      <div><h3 className="text-sm font-medium">{channel.name}</h3><p className="mt-0.5 text-xs text-muted-foreground">{channel.enabled ? "Service " + channel.id : "Disabled in Shopee"}</p></div>
+      <div><h3 className="text-sm font-medium">{channel.name}</h3>{!channel.enabled && <p className="mt-0.5 text-xs text-muted-foreground">Disabled in Shopee</p>}</div>
       <Toggle checked={rule.enabled} disabled={locked || !channel.enabled && !rule.enabled} label={"Auto process " + channel.name} onClick={() => persist({ ...rule, enabled: !rule.enabled })}/>
     </div>
     <div className="mt-4 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-3">

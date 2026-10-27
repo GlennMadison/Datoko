@@ -28,10 +28,11 @@ export default async function AutomationPage() {
   }) : [];
   const enabled = shop?.automation?.enabled ?? false;
   const connected = shop?.connection?.status === "CONNECTED";
-  const channels = demo ? [
+  const allChannels = demo ? [
     { id: "1001", name: "Anteraja Reguler", enabled: true }, { id: "1002", name: "Anteraja Same Day", enabled: true },
     { id: "1003", name: "SPX Standard", enabled: true },
   ] : (shop?.automation?.channels ?? []) as CourierChannel[];
+  const channels = allChannels.filter(c => /^(anteraja.*(reguler|regular)|anteraja.*same.?day|spx.*standard)$/i.test(c.name));
   const addresses = demo ? [{ id: "77", label: "Shop pickup address (example)" }] : (shop?.automation?.addresses ?? []) as PickupAddress[];
   const rules = demo ? [{ channelId: "1003", enabled: false, method: "pickup", pickupAddressId: "77", fallbackDropoff: false, branchId: null, senderRealName: null }] : (shop?.courierRules ?? []).map(r => ({
     channelId: r.channelId, enabled: r.enabled, method: r.method, pickupAddressId: r.pickupAddressId,
@@ -43,9 +44,6 @@ export default async function AutomationPage() {
       <AutoProcessControls shopId={shop?.id} enabled={enabled} connected={connected} disabled={demo || !shop}
         channels={channels} addresses={addresses} rules={rules}/>
       <div className="mt-4 space-y-1 text-xs leading-relaxed text-muted-foreground">
-        <p>Applies to new paid orders placed after both automation and their courier service are enabled. Runs during background sync, at least one hour after payment.</p>
-        <p>You still pack the items, print shipping labels, and hand parcels to the courier. Unpaid, COD, cancelled, already arranged, and split-package orders require no automatic shipment request.</p>
-        {demo ? <p>Demo mode is read-only. Courier names shown are examples.</p> : !connected ? <p>Connect your Shopee shop to load couriers and enable automation.</p> : null}
         {shop?.automation?.lastErrorCode && !["PAYMENT_OR_WAITING_PERIOD", "PICKUP_UNAVAILABLE"].includes(shop.automation.lastErrorCode) && <p role="status">{processingMessage(shop.automation.lastErrorCode)}</p>}
         {shop?.automation?.lastRunAt && <p>Last checked: {timeLabel(shop.automation.lastRunAt)}</p>}
         {shop?.automation?.catalogUpdatedAt && <p>Courier list updated: {timeLabel(shop.automation.catalogUpdatedAt)}</p>}
