@@ -68,9 +68,35 @@
   --status-green: var(--primary);
   --status-orange: light-dark(#d5a85c, #d5b67f);
   --status-red: light-dark(#cd8075, #d4938c);
+  --scrollbar-thumb: light-dark(#a8b7ad, #535b56);
+  --scrollbar-thumb-hover: light-dark(#7d9386, #76877c);
+  --scrollbar-thumb-active: light-dark(#567563, #94b09f);
 }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
+
+/* Native scrolling, with the same treatment for pages and nested panels. */
+@media (forced-colors: none) {
+  * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+
+  /* Chromium/Safari use rounded thumbs; Firefox keeps the standard rules. */
+  @supports selector(::-webkit-scrollbar) {
+    * { scrollbar-width: auto; scrollbar-color: auto; }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      min-height: 32px;
+      min-width: 32px;
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: var(--scrollbar-thumb);
+      background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-thumb:hover { background-color: var(--scrollbar-thumb-hover); }
+    ::-webkit-scrollbar-thumb:active { background-color: var(--scrollbar-thumb-active); }
+    ::-webkit-scrollbar-corner { background: transparent; }
+  }
+}
 
 @layer base {
   * { @apply border-border outline-ring/50; }
@@ -365,7 +391,7 @@
 .profit-tooltip > span { display: flex; justify-content: space-between; gap: 18px; font-variant-numeric: tabular-nums; }
 .profit-tooltip b { font-weight: 500; color: var(--muted); }
 .profit-tooltip small { font-size: 10px; color: var(--muted); }
-.profit-ledger { max-height: 200px; overflow: auto; scrollbar-width: thin; min-width: 0; }
+.profit-ledger { max-height: 200px; overflow: auto; min-width: 0; }
 .profit-ledger ul { margin: 0; padding: 0; list-style: none; }
 .profit-ledger li { display: grid; grid-template-columns: minmax(0, 1fr) auto 38px; align-items: center; gap: 8px; min-height: 28px; padding-block: 5px; border-bottom: 1px solid var(--line); font-size: 11px; }
 .profit-ledger li:last-child { border-bottom: 0; }
