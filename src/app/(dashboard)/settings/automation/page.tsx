@@ -32,8 +32,8 @@ export default async function AutomationPage() {
     { id: "1001", name: "Anteraja Reguler", enabled: true }, { id: "1002", name: "Anteraja Same Day", enabled: true },
     { id: "1003", name: "SPX Standard", enabled: true },
   ] : (shop?.automation?.channels ?? []) as CourierChannel[];
-  const addresses = (shop?.automation?.addresses ?? []) as PickupAddress[];
-  const rules = (shop?.courierRules ?? []).map(r => ({
+  const addresses = demo ? [{ id: "77", label: "Shop pickup address (example)" }] : (shop?.automation?.addresses ?? []) as PickupAddress[];
+  const rules = demo ? [{ channelId: "1003", enabled: false, method: "pickup", pickupAddressId: "77", fallbackDropoff: false, branchId: null, senderRealName: null }] : (shop?.courierRules ?? []).map(r => ({
     channelId: r.channelId, enabled: r.enabled, method: r.method, pickupAddressId: r.pickupAddressId,
     fallbackDropoff: r.fallbackDropoff, branchId: r.branchId, senderRealName: r.senderRealName,
   }));
