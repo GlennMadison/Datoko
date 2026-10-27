@@ -54,7 +54,7 @@ function CourierRow({ channel, initial, addresses, shopId, disabled }: {
   const locked = disabled || pending;
   return <div className="border-t px-5 py-5 first:border-t-0 sm:px-6">
     <div className="flex items-center justify-between gap-4">
-      <div><h3 className="text-sm font-medium">{channel.name}</h3>{!channel.enabled && <p className="mt-0.5 text-xs text-muted-foreground">Disabled in Shopee</p>}</div>
+      <div><h3 className="text-sm font-medium">{channel.name.replace(/^Anteraja\s*/i, "")}</h3>{!channel.enabled && <p className="mt-0.5 text-xs text-muted-foreground">Disabled in Shopee</p>}</div>
       <Toggle checked={rule.enabled} disabled={locked || !channel.enabled && !rule.enabled} label={"Auto process " + channel.name} onClick={() => persist({ ...rule, enabled: !rule.enabled })}/>
     </div>
     <div className="mt-4 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -115,7 +115,7 @@ export function AutoProcessControls({ shopId, enabled, disabled, connected, chan
         <div><h2 id="courier-heading" className="text-sm font-semibold">Courier services</h2><p className="mt-1 text-xs text-muted-foreground">Regular, same-day, and instant services have separate settings.</p></div>
         <Button variant="outline" size="sm" disabled={disabled || pending || !connected} onClick={() => action({ action: "catalog" })}>{pending ? "Loading…" : channels.length ? "Refresh couriers" : "Load couriers from Shopee"}</Button>
       </div>
-      {channels.length ? channels.map(channel => <CourierRow key={channel.id + JSON.stringify(rules.find(r => r.channelId === channel.id))} shopId={shopId} channel={channel} initial={rules.find(r => r.channelId === channel.id)} addresses={addresses} disabled={disabled || pending}/>) :
+      {channels.length ? <div><div className="border-b bg-muted/30 px-5 py-3 sm:px-6"><h3 className="text-sm font-semibold">Anteraja</h3></div>{channels.map(channel => <CourierRow key={channel.id + JSON.stringify(rules.find(r => r.channelId === channel.id))} shopId={shopId} channel={channel} initial={rules.find(r => r.channelId === channel.id)} addresses={addresses} disabled={disabled || pending}/>)}</div> :
         <p className="px-5 py-8 text-sm text-muted-foreground">Load your shop's couriers, choose a shipment method, then enable the services you want to automate.</p>}
     </section>
   </>;
