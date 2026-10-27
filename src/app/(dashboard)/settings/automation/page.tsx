@@ -29,13 +29,13 @@ export default async function AutomationPage() {
   const enabled = shop?.automation?.enabled ?? false;
   const connected = shop?.connection?.status === "CONNECTED";
   const allChannels = demo ? [
-    { id: "1001", name: "Anteraja Reguler", enabled: true }, { id: "1002", name: "Anteraja Same Day", enabled: true },
-    { id: "1003", name: "SPX Standard", enabled: true },
+    { id: "1001", name: "Anteraja Reguler", enabled: true },
+    { id: "1005", name: "Anteraja Economy", enabled: true },
     { id: "1004", name: "Anteraja Cargo", enabled: true },
   ] : (shop?.automation?.channels ?? []) as CourierChannel[];
-  const channels = allChannels.filter(c => /^(anteraja.*(reguler|regular|cargo|kargo)|anteraja.*same.?day|spx.*standard)$/i.test(c.name));
+  const channels = allChannels.filter(c => /^anteraja.*(reguler|regular|cargo|kargo|economy|ekonomi)$/i.test(c.name));
   const addresses = demo ? [{ id: "77", label: "Shop pickup address (example)" }] : (shop?.automation?.addresses ?? []) as PickupAddress[];
-  const rules = demo ? [{ channelId: "1003", enabled: false, method: "pickup", pickupAddressId: "77", fallbackDropoff: false, branchId: null, senderRealName: null }] : (shop?.courierRules ?? []).map(r => ({
+  const rules = demo ? [{ channelId: "1005", enabled: false, method: "pickup", pickupAddressId: "77", fallbackDropoff: false, branchId: null, senderRealName: null }] : (shop?.courierRules ?? []).map(r => ({
     channelId: r.channelId, enabled: r.enabled, method: r.method, pickupAddressId: r.pickupAddressId,
     fallbackDropoff: r.fallbackDropoff, branchId: r.branchId, senderRealName: r.senderRealName,
   }));

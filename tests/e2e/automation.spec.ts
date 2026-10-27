@@ -5,7 +5,7 @@ test("courier automation is readable, responsive and read-only in demo", async (
   await expect(page.getByRole("heading",{name:"Order automation",exact:true})).toBeVisible();
   await expect(page.getByRole("switch",{name:"Auto process orders",exact:true})).toBeDisabled();
   await expect(page.getByRole("switch",{name:"Auto process Anteraja Reguler",exact:true})).toBeDisabled();
-  await expect(page.getByRole("switch",{name:"Auto process Anteraja Same Day",exact:true})).toBeDisabled();
+  await expect(page.getByRole("switch",{name:"Auto process Anteraja Economy",exact:true})).toBeDisabled();
   await expect(page.getByLabel("Shipment method").first()).toBeVisible();
   await expect(page.getByRole("button",{name:"Refresh couriers",exact:true})).toBeDisabled();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
