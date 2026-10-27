@@ -1,3 +1,4 @@
+import { historyWindow, HISTORY_RESOURCE } from "../core/history-sync.ts";
 import { syncShopReturns } from "./returns.ts";
 import { syncVariationNames } from "./variation-names.ts";
 import { syncShopFinance } from "./finance.ts";
@@ -10,7 +11,7 @@ import { AppError, publicErrorCode } from "../core/errors.ts";
 import { syncWindows, importWindow, initialCoverageFrom, SyncWindowPaused } from "../core/sync.ts";
 import type { SyncJob, SyncContinuation } from "./queue.ts";
 
-async function saveOrder(shopId: string, generation: number, source: NormalizedOrder) {
+async function saveOrder(shopId: string, generation: number, source: NormalizedOrder, historical = false) {
   const db = getDb();
   await db.$transaction(async tx => {
     // A reconnect/disconnect must not commit between checking the generation
@@ -23,7 +24,7 @@ async function saveOrder(shopId: string, generation: number, source: NormalizedO
     const order = await tx.order.upsert({ where: { shopId_orderSn: { shopId, orderSn: source.orderSn } }, create: { shopId, orderSn: source.orderSn, currency: source.currency, sourceCreatedAt: source.createdAt, ...data }, update: data });
     if (!previous || previous.status !== source.status) await tx.orderHistory.create({ data: { orderId: order.id, previousStatus: previous?.status, status: source.status, sourceUpdatedAt: source.updatedAt } });
     for (const item of source.items) {
-      const variant = await tx.productVariant.upsert({ where: { shopId_sourceItemId_sourceModelId: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId } }, create: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId, name: item.name, variationName: item.variationName, sku: item.sku }, update: { name: item.name, ...(item.variationName ? { variationName: item.variationName } : {}), sku: item.sku } });
+      const variant = await tx.productVariant.upsert({ where: { shopId_sourceItemId_sourceModelId: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId } }, create: { shopId, sourceItemId: item.itemId, sourceModelId: item.modelId, name: item.name, variationName: item.variationName, sku: item.sku }, update: historical ? {} : { name: item.name, ...(item.variationName ? { variationName: item.variationName } : {}), sku: item.sku } });
       const cost = await tx.skuCostVersion.findFirst({ where: { variantId: variant.id, effectiveAt: { lte: source.createdAt } }, orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }] });
       const existingItem = await tx.orderItem.findUnique({ where: { orderId_sourceLineKey: { orderId: order.id, sourceLineKey: item.lineKey } } });
       if (!existingItem) await tx.orderItem.create({ data: { orderId: order.id, sourceLineKey: item.lineKey, variantId: variant.id, name: item.name, variationName: item.variationName, sku: item.sku, quantity: item.quantity, originalUnitPrice: item.originalUnitPrice, paidUnitPrice: item.paidUnitPrice, costSnapshot: cost?.amount ?? null, costVersionId: cost?.id ?? null, costQuality: cost ? (cost.note?.startsWith("[Historical baseline]") ? "HISTORICAL_BASELINE" : "HISTORICAL_INPUT") : "MISSING" } });
@@ -35,6 +36,7 @@ async function saveOrder(shopId: string, generation: number, source: NormalizedO
 }
 
 export async function runShopSync(job: SyncJob, controls: { shouldPause?: () => boolean } = {}): Promise<SyncContinuation | undefined> {
+  if ((await getDb().syncRun.findUnique({ where: { id: job.runId }, select: { reason: true } }))?.reason === "HISTORICAL") return runOrderHistory(job, controls);
   return withShopLock(`order-sync:${job.shopId}`, async () => {
     const db = getDb();
     const config = getConfig();
@@ -112,6 +114,83 @@ export async function runShopSync(job: SyncJob, controls: { shouldPause?: () => 
       await db.syncRun.updateMany({ where: { id: job.runId, status: { not: "CANCELLED" } }, data: { status: cancelled ? "CANCELLED" : "RETRYING", errorCode: code, finishedAt: new Date() } });
       await db.syncState.updateMany({ where: { shopId: job.shopId, resource: "orders" }, data: { lastErrorCode: code } });
       if (!cancelled) throw new AppError(code, error instanceof AppError ? error.status : 500);
+    }
+  });
+}
+
+/** History uses creation time and a separate backwards checkpoint. */
+async function runOrderHistory(job: SyncJob, controls: { shouldPause?: () => boolean }): Promise<SyncContinuation | undefined> {
+  return withShopLock(`order-sync:${job.shopId}`, async () => {
+    const db = getDb();
+    const client = new ShopeeClient(partnerConfig());
+    const run = await db.syncRun.findUniqueOrThrow({ where: { id: job.runId } });
+    if (run.shopId !== job.shopId || run.generation !== job.generation) throw new AppError("INVALID_SYNC_JOB", 409);
+    if (["SUCCEEDED", "CANCELLED"].includes(run.status)) return;
+    await db.syncRun.update({ where: { id: run.id }, data: { status: "RUNNING", startedAt: run.startedAt ?? new Date(), finishedAt: null, errorCode: null } });
+    try {
+      await accessForShop(job.shopId, job.generation);
+      const state = await db.syncState.upsert({
+        where: { shopId_resource: { shopId: job.shopId, resource: HISTORY_RESOURCE } },
+        create: { shopId: job.shopId, resource: HISTORY_RESOURCE, checkpoint: new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000) },
+        update: {},
+      });
+      let through = state.checkpoint!;
+      let processed = run.processed;
+      const read = async <T>(action: (token: string, sourceId: string) => Promise<T>): Promise<T> => {
+        const access = await accessForShop(job.shopId, job.generation);
+        try { return await action(access.accessToken, access.sourceShopId); }
+        catch (error) {
+          if (!(error instanceof AppError) || error.code !== "SHOPEE_ACCESS_EXPIRED") throw error;
+          const fresh = await accessForShop(job.shopId, job.generation, access.accessToken);
+          return action(fresh.accessToken, fresh.sourceShopId);
+        }
+      };
+      const continuation = (window: { from: Date; to: Date }, progress = { cursor: null as string | null, count: 0, seenCursors: [] as string[] }): SyncContinuation => ({
+        windows: [{ from: window.from.toISOString(), to: window.to.toISOString() }], progress,
+      });
+      // Yield to regular syncs and other sources after three complete windows.
+      for (let batch = 0; batch < 3; batch++) {
+        const window = historyWindow(through);
+        if (!window) break;
+        const resume = batch === 0 && job.continuation?.windows[0]?.to === through.toISOString() ? job.continuation.progress : undefined;
+        let count = 0;
+        try {
+          await importWindow(window, {
+            page: async (range, cursor) => {
+              const page = await read((token, sourceId) => client.orderList(token, sourceId, range.from, range.to, cursor, "create_time"));
+              const records: NormalizedOrder[] = [];
+              for (let offset = 0; offset < page.orderSns.length; offset += 50) {
+                records.push(...(await read((token, sourceId) => client.orderDetails(token, sourceId, page.orderSns.slice(offset, offset + 50)))).map(normalizeOrder));
+              }
+              // Adjacent API windows include their boundary; count/save it once.
+              return { records: records.filter(order => order.createdAt < range.to && order.createdAt >= range.from), nextCursor: page.nextCursor };
+            },
+          }, {
+            save: async order => { await saveOrder(job.shopId, job.generation, order, true); },
+            commitCheckpoint: async () => {},
+          }, { resume, shouldPause: controls.shouldPause }).then(value => { count = value; });
+        } catch (error) {
+          if (error instanceof SyncWindowPaused) return continuation(window, error.progress);
+          throw error;
+        }
+        // Count and backwards checkpoint commit together; replay cannot double count.
+        await db.$transaction(async tx => {
+          const current = await tx.$queryRaw<{ version: number; status: string }[]>`SELECT version, status FROM shop_connections WHERE "shopId" = ${job.shopId} FOR SHARE`;
+          if (current[0]?.version !== job.generation || current[0]?.status !== "CONNECTED") throw new AppError("CONNECTION_CHANGED", 409);
+          await tx.syncState.update({ where: { id: state.id }, data: { checkpoint: window.from, coverageFrom: window.from, lastSuccessAt: new Date(), lastErrorCode: null } });
+          await tx.syncRun.update({ where: { id: run.id }, data: { processed: processed + count } });
+        });
+        processed += count;
+        through = window.from;
+      }
+      const next = historyWindow(through);
+      if (next) return continuation(next);
+      await db.syncRun.update({ where: { id: run.id }, data: { status: "SUCCEEDED", finishedAt: new Date(), errorCode: null } });
+    } catch (error) {
+      const code = publicErrorCode(error);
+      await db.syncState.updateMany({ where: { shopId: job.shopId, resource: HISTORY_RESOURCE }, data: { lastErrorCode: code } });
+      await db.syncRun.updateMany({ where: { id: run.id, status: { not: "CANCELLED" } }, data: { status: code === "CONNECTION_CHANGED" ? "CANCELLED" : "RETRYING", errorCode: code, finishedAt: new Date() } });
+      if (code !== "CONNECTION_CHANGED") throw error;
     }
   });
 }

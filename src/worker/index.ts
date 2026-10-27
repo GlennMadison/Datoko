@@ -1,3 +1,4 @@
+import { continueSyncJob } from "../server/sync-continuation.ts";
 import { getQueue, type SyncJob } from "../server/queue.ts";
 import { closeDb } from "../server/db.ts";
 import { liveConfig } from "../server/env.ts";
@@ -20,8 +21,12 @@ async function main() {
     catch (error) { console.error(JSON.stringify({ event: "ads_batch_failed", code: publicErrorCode(error) })); }
     console.log(JSON.stringify({ event: "worker_heartbeat", at: new Date().toISOString(), connectedShops }));
   };
-  await boss.work<SyncJob>("datoko.sync", async jobs => {
-    for (const job of jobs) await runShopSync(job.data);
+  await boss.work<SyncJob>("datoko.sync", { includeMetadata: true }, async jobs => {
+    for (const job of jobs) {
+      const deadline = Date.now() + 120_000;
+      const continuation = await runShopSync(job.data, { shouldPause: () => Date.now() >= deadline });
+      if (continuation) await continueSyncJob(boss, job, continuation);
+    }
   });
   await boss.work("datoko.schedule", async () => { await dispatch(); });
   await boss.schedule("datoko.schedule", "* * * * *", {});

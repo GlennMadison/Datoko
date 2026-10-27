@@ -126,8 +126,8 @@ export class ShopeeClient {
   async escrowDetail(accessToken: string, shopId: string, orderSn: string) {
     return this.call("/api/v2/payment/get_escrow_detail", { accessToken, shopId, query: { order_sn: orderSn } });
   }
-  async orderList(accessToken: string, shopId: string, from: Date, to: Date, cursor: string | null) {
-    const raw = await this.call("/api/v2/order/get_order_list", { accessToken, shopId, query: { time_range_field: "update_time", time_from: String(Math.floor(from.getTime() / 1000)), time_to: String(Math.floor(to.getTime() / 1000)), page_size: "50", ...(cursor ? { cursor } : {}) } });
+  async orderList(accessToken: string, shopId: string, from: Date, to: Date, cursor: string | null, timeField: "create_time" | "update_time" = "update_time") {
+    const raw = await this.call("/api/v2/order/get_order_list", { accessToken, shopId, query: { time_range_field: timeField, time_from: String(Math.floor(from.getTime() / 1000)), time_to: String(Math.floor(to.getTime() / 1000)), page_size: "50", ...(cursor ? { cursor } : {}) } });
     const parsed = z.object({ order_list: z.array(z.object({ order_sn: z.string() })), more: z.boolean(), next_cursor: z.string().optional() }).parse(raw);
     if (parsed.more && !parsed.next_cursor) throw new AppError("MISSING_SOURCE_CURSOR", 502);
     return { orderSns: parsed.order_list.map(order => order.order_sn), nextCursor: parsed.more ? parsed.next_cursor! : null };
