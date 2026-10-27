@@ -111,6 +111,10 @@ export async function accessForShop(shopId: string, generation: number, failedTo
 }
 
 export async function disconnectShop(shopId: string, ownerId: string): Promise<void> {
+  return withShopLock(`auto-process:${shopId}`, () => disconnectLocked(shopId, ownerId));
+}
+
+async function disconnectLocked(shopId: string, ownerId: string): Promise<void> {
   const db = getDb();
   await db.$transaction(async tx => {
     const shop = await tx.shop.findFirst({ where: { id: shopId, ownerId } });

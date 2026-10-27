@@ -1,3 +1,4 @@
+import { processDueOrders } from "../server/auto-process.ts";
 import { getQueue, type SyncJob } from "../server/queue.ts";
 import { closeDb } from "../server/db.ts";
 import { liveConfig } from "../server/env.ts";
@@ -16,6 +17,8 @@ async function main() {
   const dispatch = async () => {
     const connectedShops = await dispatchDueSyncs();
     const deadline = Date.now() + 120_000;
+    try { await processDueOrders({ shouldPause: () => Date.now() >= deadline - 60_000 }); }
+    catch (error) { console.error(JSON.stringify({ event: "automation_batch_failed", code: publicErrorCode(error) })); }
     try { await syncDueAds({ shouldPause: () => Date.now() >= deadline }); }
     catch (error) { console.error(JSON.stringify({ event: "ads_batch_failed", code: publicErrorCode(error) })); }
     console.log(JSON.stringify({ event: "worker_heartbeat", at: new Date().toISOString(), connectedShops }));

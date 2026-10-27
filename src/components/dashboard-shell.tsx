@@ -20,6 +20,7 @@ const reportLinks = [
   { href: "/advertisement", label: "Advertisement", icon: Megaphone },
 ];
 const settingsLinks = [
+  { href: "/settings/automation", label: "Order automation", icon: Package },
   { href: "/settings/integrations", label: "Connections", icon: Plug },
   { href: "/settings/sync", label: "Sync history", icon: RefreshCw },
 ];

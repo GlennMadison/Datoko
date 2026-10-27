@@ -1,3 +1,4 @@
+import { processDueOrders } from "./auto-process.ts";
 import { fromPrisma } from "pg-boss";
 import { AppError, publicErrorCode } from "../core/errors.ts";
 import { getDb } from "./db.ts";
@@ -51,10 +52,13 @@ export async function runSyncBatch() {
         failed++;
       }
     }
+    let automation = { checked: 0, failed: 0 };
+    try { automation = await processDueOrders({ shouldPause: () => Date.now() >= deadline - 75_000 }); }
+    catch (error) { console.error(JSON.stringify({ event: "automation_batch_failed", code: publicErrorCode(error) })); automation.failed++; }
     // Ads has its own schedule and errors; order failures must not stop it.
     let ads = { imported: 0, unchanged: 0, completed: 0, failed: 0 };
     try { ads = await syncDueAds({ shouldPause: () => Date.now() >= deadline - 25_000 }); }
     catch (error) { console.error(JSON.stringify({ event: "ads_batch_failed", code: publicErrorCode(error) })); ads.failed++; }
-    return { connectedShops, completed, continued, failed, ads };
+    return { connectedShops, completed, continued, failed, ads, automation };
   });
 }

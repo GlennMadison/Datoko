@@ -126,6 +126,24 @@ export class ShopeeClient {
   async escrowDetail(accessToken: string, shopId: string, orderSn: string) {
     return this.call("/api/v2/payment/get_escrow_detail", { accessToken, shopId, query: { order_sn: orderSn } });
   }
+  async shippingChannels(accessToken: string, shopId: string) {
+    return this.call("/api/v2/logistics/get_channel_list", { accessToken, shopId });
+  }
+  async shippingAddresses(accessToken: string, shopId: string) {
+    return this.call("/api/v2/logistics/get_address_list", { accessToken, shopId });
+  }
+  async processingOrder(accessToken: string, shopId: string, orderSn: string): Promise<Record<string, unknown>> {
+    const raw = await this.call("/api/v2/order/get_order_detail", { accessToken, shopId, query: { order_sn_list: orderSn, response_optional_fields: "pay_time,cod,package_list,shipping_carrier" } });
+    const orders = z.array(object).parse(raw.order_list);
+    if (orders.length !== 1 || orders[0].order_sn !== orderSn) throw new AppError("INCOMPLETE_ORDER_DETAILS", 502);
+    return orders[0];
+  }
+  async shippingParameters(accessToken: string, shopId: string, orderSn: string, packageId?: string) {
+    return this.call("/api/v2/logistics/get_shipping_parameter", { accessToken, shopId, query: { order_sn: orderSn, ...(packageId ? { package_number: packageId } : {}) } });
+  }
+  async arrangeShipment(accessToken: string, shopId: string, body: Record<string, unknown>) {
+    return this.call("/api/v2/logistics/ship_order", { accessToken, shopId, body });
+  }
   async orderList(accessToken: string, shopId: string, from: Date, to: Date, cursor: string | null) {
     const raw = await this.call("/api/v2/order/get_order_list", { accessToken, shopId, query: { time_range_field: "update_time", time_from: String(Math.floor(from.getTime() / 1000)), time_to: String(Math.floor(to.getTime() / 1000)), page_size: "50", ...(cursor ? { cursor } : {}) } });
     const parsed = z.object({ order_list: z.array(z.object({ order_sn: z.string() })), more: z.boolean(), next_cursor: z.string().optional() }).parse(raw);

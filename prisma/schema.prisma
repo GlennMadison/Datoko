@@ -93,6 +93,9 @@ model Shop {
   returns        ReturnCase[]
   syncStates     SyncState[]
   syncRuns       SyncRun[]
+  automation     OrderAutomation?
+  processing     OrderProcessing[]
+  courierRules   CourierAutomation[]
   adDatasets     AdDataset[]
   @@unique([environment, sourceShopId])
   @@index([ownerId])
@@ -184,6 +187,7 @@ model Order {
   sourceUpdatedAt   DateTime  @db.Timestamptz(3)
   lastSyncedAt      DateTime  @default(now()) @db.Timestamptz(3)
   items             OrderItem[]
+  processing        OrderProcessing?
   history           OrderHistory[]
   returns           ReturnCase[]
   financialSnapshots FinancialSnapshot[]
@@ -369,4 +373,55 @@ model AdReportRevision {
   createdAt     DateTime @default(now()) @db.Timestamptz(3)
   @@unique([reportId, digest])
   @@map("ad_report_revisions")
+}
+
+model OrderAutomation {
+  shopId        String   @id
+  shop          Shop     @relation(fields: [shopId], references: [id])
+  enabled       Boolean  @default(false)
+  enabledFrom   DateTime @db.Timestamptz(3)
+  updatedBy     String
+  lastRunAt     DateTime? @db.Timestamptz(3)
+  lastErrorCode String?
+  channels      Json @default("[]")
+  addresses     Json @default("[]")
+  catalogUpdatedAt DateTime? @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @db.Timestamptz(3)
+  @@map("order_automation")
+}
+
+model OrderProcessing {
+  id          String   @id @default(cuid())
+  shopId      String
+  shop        Shop     @relation(fields: [shopId], references: [id])
+  orderId     String   @unique
+  order       Order    @relation(fields: [orderId], references: [id])
+  status      String
+  checks      Int      @default(0)
+  errorCode   String?
+  channelId   String?
+  method      String?
+  requestedAt DateTime? @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+  @@index([shopId, status, updatedAt])
+  @@map("order_processing")
+}
+
+model CourierAutomation {
+  id              String @id @default(cuid())
+  shopId          String
+  shop            Shop @relation(fields: [shopId], references: [id])
+  channelId       String
+  channelName     String
+  enabled         Boolean @default(false)
+  enabledFrom     DateTime @db.Timestamptz(3)
+  method          String @default("dropoff")
+  pickupAddressId String?
+  fallbackDropoff Boolean @default(false)
+  branchId        String?
+  senderRealName  String?
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([shopId, channelId])
+  @@map("courier_automation")
 }
