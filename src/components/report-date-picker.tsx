@@ -90,7 +90,7 @@ export function ReportDatePicker({ period, onSelect }: { period: ReportPeriod; o
         {view === "day" && <div className="date-picker-days" role="group" aria-label={`${months[month - 1]} ${year}`}>
           {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(day => <span key={day} className="date-picker-weekday">{day}</span>)}
           {Array.from({ length: offset }, (_, index) => <span key={`blank-${index}`} aria-hidden="true"/>)}
-          {Array.from({ length: lastDay }, (_, index) => index + 1).map(day => { const date = dateKey(year, month, day); return <button type="button" key={day} aria-label={date} disabled={date > period.today} aria-pressed={date >= period.from && date <= period.to} onClick={() => choose({ preset: "custom", from: date, to: date })}>{day}</button>; })}
+          {Array.from({ length: lastDay }, (_, index) => index + 1).map(day => { const date = dateKey(year, month, day); return <button type="button" key={day} aria-label={date} disabled={date > period.today} aria-pressed={date >= period.from && date <= period.to} onClick={() => choose({ preset: "day", from: date, to: date })}>{day}</button>; })}
         </div>}
         {view === "week" && <div className="date-picker-weeks">
           <button type="button" className="date-picker-relative" onClick={() => choose({ preset: "this-week" })}>This week</button>
@@ -100,7 +100,7 @@ export function ReportDatePicker({ period, onSelect }: { period: ReportPeriod; o
           <button type="button" className="date-picker-relative" onClick={() => choose({ preset: "this-month" })}>This month</button>
           <div className="date-picker-months" role="group" aria-label={`Months in ${year}`}>{months.map((name, index) => <button type="button" key={name} aria-label={`${name} ${year}`} disabled={dateKey(year, index + 1, 1) > period.today} aria-pressed={period.preset === "month" && period.year === year && period.month === index + 1} onClick={() => choose({ preset: "month", year: String(year), month: String(index + 1) })}>{name.slice(0, 3)}</button>)}</div>
         </>}
-        {view === "year" && <div className="date-picker-years" role="group" aria-label="Reporting years">{years.map(value => <button key={value} type="button" onClick={() => choose({ preset: "custom", from: `${value}-01-01`, to: value === currentYear ? period.today : `${value}-12-31` })}>{value}</button>)}</div>}
+        {view === "year" && <div className="date-picker-years" role="group" aria-label="Reporting years">{years.map(value => <button key={value} type="button" onClick={() => choose({ preset: "year", year: String(value), from: `${value}-01-01`, to: value === currentYear ? period.today : `${value}-12-31` })}>{value}</button>)}</div>}
         {view === "custom" && <div className="date-picker-custom">
           <p>Choose dates. Valid changes update the report automatically.</p>
           <label className="report-field">From<Input aria-label="From date" aria-invalid={Boolean(error)} aria-describedby={error ? `${id}-error` : undefined} type="date" min="2000-01-01" max={period.today} value={from} onChange={event => { setFrom(event.target.value); setDirty(true); }}/></label>
