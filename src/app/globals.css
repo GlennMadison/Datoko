@@ -145,6 +145,10 @@
   .status-legend > div { @apply flex items-center justify-between gap-3 text-xs text-muted-foreground; }
   .status-legend > div > span { @apply flex items-center gap-2; }
   .status-legend strong { @apply font-medium text-foreground tabular-nums; }
+  .status-details { @apply -mt-2 ml-2 space-y-2 border-l pl-3; }
+  .status-details > li { @apply flex items-center justify-between gap-3 text-[10px] text-muted-foreground; }
+  .overview-chart-controls { @apply flex flex-wrap items-end gap-2; }
+  .overview-order-scope { @apply flex flex-col gap-1 text-[10px] text-muted-foreground; }
   .dot { @apply inline-block size-1.5 shrink-0 rounded-full; }
   .dot-green { background: var(--status-green); }
   .dot-orange { background: var(--status-orange); }

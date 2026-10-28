@@ -34,7 +34,7 @@ test("chart values are available without hovering or relying on color", async ({
   await page.getByText("View chart data", { exact: true }).click();
   const data = page.locator(".chart-data");
   await expect(data.getByRole("table")).toBeVisible();
-  await expect(data.getByRole("columnheader", { name: "Completed sales / IDR" })).toBeVisible();
+  await expect(data.getByRole("columnheader", { name: "Sales / IDR", exact: true })).toBeVisible();
   await expect(data.locator("tbody tr")).toHaveCount(7);
   await expect(data.locator("tbody tr").last().locator("td").last()).toContainText("Rp");
 });

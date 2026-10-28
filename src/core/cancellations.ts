@@ -11,3 +11,12 @@ export function cancellationBreakdown(orders: CancellationOrder[]) {
   }
   return result;
 }
+
+export function cancellationDetails(summary: ReturnType<typeof cancellationBreakdown>) {
+  return [
+    { key: "unpaid", label: "Before payment", count: summary.unpaid },
+    { key: "paid", label: "After payment", count: summary.paid },
+    { key: "returned", label: "Returned", count: summary.returned },
+    ...(summary.unknown ? [{ key: "unknown", label: "Payment unconfirmed", count: summary.unknown }] : []),
+  ];
+}
