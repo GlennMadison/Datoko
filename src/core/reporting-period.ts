@@ -58,6 +58,8 @@ export function resolveReportPeriod(query: ReportQuery = {}, now = new Date()): 
     case "this-week": from = weekStart(today); break;
     case "this-month": from = monthDate(currentYear, Number(today.slice(5, 7))); break;
     case "last7": case "last30": case "last90": from = shiftDate(today, -Number(preset.slice(4)) + 1); break;
+    case "day": from = to = param(query, "from") ?? ""; break;
+    case "year": from = monthDate(year, 1); to = year === currentYear ? today : monthDate(year, 12, 31); break;
     case "month": case "month-week": {
       const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
       week = preset === "month-week" ? integer(param(query, "week"), 1, 1, 4) : null;
@@ -73,7 +75,7 @@ export function resolveReportPeriod(query: ReportQuery = {}, now = new Date()): 
   const start = dayStart(from);
   const inclusiveEnd = dayStart(to);
   if (from > to || to > today || inclusiveEnd.getTime() - start.getTime() > 3660 * DAY) throw new AppError("INVALID_REPORT_RANGE", 400);
-  if (preset === "custom") { year = Number(from.slice(0, 4)); month = Number(from.slice(5, 7)); }
+  if (preset === "custom" || preset === "day") { year = Number(from.slice(0, 4)); month = Number(from.slice(5, 7)); }
   const rawInterval = param(query, "interval") ?? "auto";
   if (!INTERVALS.includes(rawInterval as ReportInterval)) throw new AppError("INVALID_REPORT_INTERVAL", 400);
   const interval = rawInterval as ReportInterval;

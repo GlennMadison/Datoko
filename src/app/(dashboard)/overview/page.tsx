@@ -1,3 +1,5 @@
+import { OverviewComparison } from "@/components/overview-comparison";
+import { overviewComparisonPeriod } from "@/core/period-comparison";
 import { cancellationDetails } from "@/core/cancellations";
 import { orderStatusSummary } from "@/core/order-status";
 import { isOverviewOrder } from "@/core/overview-sales";
@@ -19,9 +21,12 @@ import { SyncButton, AutoSync } from "@/components/sync-button";
 
 export default async function Overview({ searchParams }: { searchParams: Promise<ReportQuery> }) {
   const period = pageReportPeriod(await searchParams);
-  const [data, ads] = await Promise.all([
+  const previousPeriod = overviewComparisonPeriod(period);
+  const [data, ads, previousData, previousAds] = await Promise.all([
     getDashboardData(period),
     getAdvertisementData(period, { campaign: "shop" }),
+    previousPeriod ? getDashboardData(previousPeriod) : null,
+    previousPeriod ? getAdvertisementData(previousPeriod, { campaign: "shop" }) : null,
   ]);
   const status = orderStatusSummary(data.orders);
   const cancelled = cancellationDetails(data.cancellations ?? { all: status.cancelled, paid: 0, unpaid: 0, returned: 0, unknown: status.cancelled });
@@ -29,6 +34,15 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const adSpend = ads.coverage.available > 0 ? ads.summary.spend : null;
   const adsComplete = ads.coverage.available > 0 && ads.coverage.available === ads.coverage.expected;
   const netProfit = profitAfterAdSpend(data.metrics.profit, adsComplete ? adSpend : null);
+  const previousAdSpend = previousAds && previousAds.coverage.available > 0 ? previousAds.summary.spend : null;
+  const previousAdsComplete = previousAds && previousAds.coverage.available > 0 && previousAds.coverage.available === previousAds.coverage.expected;
+  const previousProfit = previousData ? profitAfterAdSpend(previousData.metrics.profit, previousAdsComplete ? previousAdSpend : null) : null;
+  const comparisons = previousPeriod && previousData ? [
+    { current: data.metrics.sales, previous: previousData.metrics.sales, format: rupiah },
+    { current: data.metrics.orders, previous: previousData.metrics.orders, format: number },
+    { current: netProfit, previous: previousProfit, format: rupiah },
+    { current: adSpend === null ? null : Number(adSpend), previous: previousAdSpend === null ? null : Number(previousAdSpend), format: rupiah, lowerIsBetter: true },
+  ] : null;
   // Both reports use the same time buckets. Do not allocate daily spend to hours.
   const trend = data.trend.map((point, index) => {
     const spend = ads.period.effectiveInterval === period.effectiveInterval ? ads.points[index]?.spend ?? null : null;
@@ -44,7 +58,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   return <>
     <AutoSync shopId={data.shop?.id} enabled={!demo && data.shop?.status === "CONNECTED"} lastSyncedAt={data.lastSyncedAt}/>
     <PageHeading title="Overview" actions={<div className="flex flex-wrap items-start gap-2">{data.shop && <FinanceSyncButton shopId={data.shop.id} disabled={demo || data.shop.status !== "CONNECTED"}/>}<SyncButton shopId={data.shop?.id} disabled={demo || data.shop?.status !== "CONNECTED"}/></div>}/>
-    <dl className="metrics-grid">{cards.map((card, index) => <Metric key={card.label} label={card.label} value={card.value} note={card.note} icon={card.icon} featured={index === 0}/>)}</dl>
+    <dl className="metrics-grid">{cards.map((card, index) => <Metric key={card.label} label={card.label} value={card.value} note={card.note} icon={card.icon} featured={index === 0} comparison={comparisons && previousPeriod ? <OverviewComparison {...comparisons[index]} label={previousPeriod.label}/> : undefined}/>)}</dl>
     <ReportingControls period={period}/>
     <div className="analytics-grid">
       <Card role="region" aria-label="Sales chart">{trend.length ? <OverviewTrend data={trend}/> : <><div className="card-heading"><h2>Sales over time</h2></div><EmptyState title="No sales in this period">Connect a shop or choose a different date range.</EmptyState></>}</Card>
