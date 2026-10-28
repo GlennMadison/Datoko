@@ -1,6 +1,6 @@
 import { AppError, publicErrorCode } from "../core/errors.ts";
 import { adsRange, adsSyncDue, normalizeAdsMetrics, normalizeCampaignAds, type AdsRow } from "../core/shopee-ads.ts";
-import { shiftDate } from "../core/reporting-period.ts";
+import { localDate, shiftDate } from "../core/reporting-period.ts";
 import { getDb } from "./db.ts";
 import { getConfig, isDemo, partnerConfig } from "./env.ts";
 import { accessForShop, withShopLock } from "./connections.ts";
@@ -106,6 +106,60 @@ export async function syncShopAds(shopId: string, generation: number, controls: 
     return { imported, unchanged, completed, failed };
   });
 }
+
+/** Explicit historical request; one 30-day window per worker tick. */
+export async function syncShopAdsHistory(shopId: string, generation: number, controls: Controls = {}) {
+  return withShopLock(`ads-sync:${shopId}`, async () => {
+    const db = getDb();
+    const shop = await db.shop.findFirst({ where: { id: shopId, environment: getConfig().SHOPEE_ENV, connection: { version: generation, status: "CONNECTED" } } });
+    if (!shop || shop.currency !== "IDR") throw new AppError("CONNECTION_CHANGED", 409);
+    const state = await db.syncState.findUnique({ where: { shopId_resource: { shopId, resource: "ads-history" } } });
+    const result = { imported: 0, unchanged: 0, completed: 0, failed: 0 };
+    const target = adsRange().from;
+    if (!state?.checkpoint || state.lastErrorCode || localDate(state.checkpoint) >= target || controls.shouldPause?.()) return result;
+    const from = localDate(state.checkpoint);
+    const to = [shiftDate(from, 29), shiftDate(target, -1)].sort()[0];
+    const now = new Date();
+    const client = new ShopeeClient(partnerConfig());
+    const mark = async (data: { checkpoint?: Date; lastSuccessAt?: Date; lastErrorCode: string | null }) => {
+      await db.$transaction(async tx => {
+        const connection = await tx.$queryRaw<{ version: number; status: string }[]>`SELECT version, status FROM shop_connections WHERE "shopId" = ${shopId} FOR SHARE`;
+        if (connection[0]?.version !== generation || connection[0]?.status !== "CONNECTED") throw new AppError("CONNECTION_CHANGED", 409);
+        await tx.syncState.update({ where: { id: state.id }, data });
+      });
+    };
+    try {
+      let access = await accessForShop(shopId, generation);
+      let raw: unknown[];
+      try { raw = await client.adsDaily(access.accessToken, access.sourceShopId, from, to); }
+      catch (error) {
+        if (!(error instanceof AppError) || error.code !== "SHOPEE_ACCESS_EXPIRED") throw error;
+        access = await accessForShop(shopId, generation, access.accessToken);
+        raw = await client.adsDaily(access.accessToken, access.sourceShopId, from, to);
+      }
+      const reports = normalizeAdsMetrics(raw, "DAY", { from, to, now });
+      // Persist only actual source rows. An empty response never means zero spend.
+      if (reports.length) {
+        const saved = await importSyncedAdReport(shop, generation, reports, now);
+        result.imported = saved.imported; result.unchanged = saved.unchanged;
+      }
+      const dates = new Set(reports.map(row => localDate(new Date(row.start))));
+      for (let date = from; date <= to; date = shiftDate(date, 1)) {
+        if (!dates.has(date)) throw new AppError("ADS_HISTORY_INCOMPLETE", 502);
+      }
+      await mark({ checkpoint: new Date(`${shiftDate(to, 1)}T00:00:00+07:00`), lastSuccessAt: now, lastErrorCode: null });
+      result.completed = 1;
+    } catch (error) {
+      const code = publicErrorCode(error);
+      if (code === "CONNECTION_CHANGED") throw error;
+      await mark({ lastErrorCode: code });
+      console.error(JSON.stringify({ event: "ads_history_failed", code, from, to }));
+      result.failed = 1;
+    }
+    return result;
+  });
+}
+
 export async function syncDueAds(controls: Controls = {}) {
   const config = getConfig(), db = getDb();
   const shops = await db.shop.findMany({ where: { environment: config.SHOPEE_ENV, connection: { status: "CONNECTED" } }, include: { connection: true, syncStates: true } });
@@ -116,6 +170,14 @@ export async function syncDueAds(controls: Controls = {}) {
     return !main?.lastErrorCode && ["ads-hourly", "ads-campaigns"].some(resource => adsSyncDue(shop.syncStates.find(s => s.resource === resource), requestAt, config.SYNC_INTERVAL_MINUTES));
   }).sort((a, b) => (a.syncStates.find(s => s.resource === "ads")?.updatedAt.getTime() ?? 0) - (b.syncStates.find(s => s.resource === "ads")?.updatedAt.getTime() ?? 0));
   const shop = due[0];
-  if (!shop || controls.shouldPause?.()) return { imported: 0, unchanged: 0, completed: 0, failed: 0 };
-  return syncShopAds(shop.id, shop.connection!.version, controls);
+  const result = shop && !controls.shouldPause?.()
+    ? await syncShopAds(shop.id, shop.connection!.version, controls)
+    : { imported: 0, unchanged: 0, completed: 0, failed: 0 };
+  const historyShop = shops.find(candidate => candidate.syncStates.some(state =>
+    state.resource === "ads-history" && state.checkpoint && !state.lastErrorCode && localDate(state.checkpoint) < adsRange().from));
+  if (historyShop && !controls.shouldPause?.()) {
+    const history = await syncShopAdsHistory(historyShop.id, historyShop.connection!.version, controls);
+    for (const key of ["imported", "unchanged", "completed", "failed"] as const) result[key] += history[key];
+  }
+  return result;
 }
