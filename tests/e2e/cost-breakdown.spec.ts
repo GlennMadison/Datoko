@@ -4,12 +4,12 @@ test("overview pie shows clean profit and costs as shares of the same total", as
   await page.goto("/overview?preset=last7&interval=day");
   const card = page.getByRole("region", { name: "Cost breakdown", exact: true });
   await expect(card.getByRole("heading", { name: "Costs & clean profit", exact: true })).toBeVisible();
-  await expect(card.getByRole("img", { name: /Costs and clean profit pie chart/ })).toBeVisible();
-  const list = card.getByRole("list", { name: "Amounts and percentages" });
+  await expect(card.getByRole("group", { name: "Costs and clean profit pie chart", exact: true })).toBeVisible();
+  const list = card.getByLabel("Cost amounts and percentages").getByRole("list");
   for (const label of ["COGS", "Advertisement", "Affiliate commission", "Shopee commission", "Shopee service fee", "Shopee transaction fee", "Order processing fee", "Clean profit"]) {
     const item = list.getByRole("listitem").filter({ has: page.getByText(label, { exact: true }) });
     await expect(item).toContainText("Rp");
-    await expect(item).toContainText("% of sales");
+    await expect(item.locator("small")).toHaveText(/^-?\d+(?:\.\d+)?%$/);
   }
   await expect(card.getByText("Data notes", { exact: true })).toHaveCount(0);
   const profitRow = list.getByRole("listitem").filter({ has: page.getByText("Clean profit", { exact: true }) });
