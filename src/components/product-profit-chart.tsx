@@ -13,18 +13,18 @@ export function ProductProfitChart({ base, ads, names, adsComplete }: { base?: P
   const rows = data?.products.map((row, index) => ({
     ...row, color: palette[index % palette.length],
     key: row.itemId, label: row.name, value: Number(row.cleanProfit),
-    detail: Number(row.adSpend) > 0 ? `Before ads ${rupiah(Number(row.profitBeforeAds))} · Ads −${rupiah(Number(row.adSpend))}` : "No matched product ad spend",
+    detail: Number(row.adSpend) > 0 ? `Before ads ${rupiah(Number(row.profitBeforeAds))} � Ads incl. PPN -${rupiah(Number(row.adSpend))}` : "No matched product ad spend",
   })) ?? [];
   const slices = rows.filter(row => row.value > 0);
   const positiveBasis = data && (data.hasLosses || Number(data.unassignedSpend) > 0);
   const notes = [
     data?.partial ? `${base!.covered} / ${base!.eligible} completed orders covered.` : null,
     data?.mixedOrders ? "Mixed-order payouts are split by item sales value." : null,
-    data && Number(data.unassignedSpend) > 0 ? `${rupiah(Number(data.unassignedSpend))} in shared or unmatched ads is deducted from the total, not individual products.` : null,
+    data && Number(data.unassignedSpend) > 0 ? `${rupiah(Number(data.unassignedSpend))} in shared or unmatched ads (incl. PPN) is deducted from the total, not individual products.` : null,
     positiveBasis ? "Percentages show shares of positive product profit; losses are listed separately." : null,
   ].filter(Boolean);
   return <Card role="region" aria-label="Product clean profit" className="profit-card">
-    <div className="card-heading"><h2>Clean profit by product</h2><span className="text-[10px] text-muted-foreground">After ads</span></div>
+    <div className="card-heading"><h2>Clean profit by product</h2><span className="text-[10px] text-muted-foreground">After ads &amp; PPN</span></div>
     {ready && rows.length ? <div className="profit-card-body">
       {slices.length ? <ProfitDonut slices={slices} label="Product clean profit contribution pie chart">
         <span>{Number(data!.total) < 0 ? "Net loss" : "Clean profit"}</span>

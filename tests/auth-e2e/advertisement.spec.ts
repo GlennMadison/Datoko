@@ -72,10 +72,10 @@ test("owner sees a compact summary and original-date payment and refund updates"
     await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
     await pool.query(`UPDATE orders SET status='COMPLETED',"paymentStatus"='PAID' WHERE id=$1`, [orderId]);
     await page.reload();
-    await expect(page.getByTestId("estimated-roas")).toHaveText("10.00x");
+    await expect(page.getByTestId("estimated-roas")).toHaveText("9.01x");
     await pool.query(`INSERT INTO return_cases (id,"shopId","orderId","returnSn",status,"confirmedRefund","sourceUpdatedAt") VALUES ($1,$2,$3,'ADS-BROWSER-RETURN','ACCEPTED',300000,now())`, [randomUUID(), shopId, orderId]);
     await page.reload();
-    await expect(page.getByTestId("estimated-roas")).toHaveText("7.00x");
+    await expect(page.getByTestId("estimated-roas")).toHaveText("6.31x");
     await expect(page.getByTestId("estimated-revenue")).toContainText("700.000");
     await expect(page.getByTestId("adjusted-outcomes-revenue")).toContainText("300.000");
     await expect(page.getByTestId("original-roas")).toHaveText("10.00x");

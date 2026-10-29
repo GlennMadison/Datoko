@@ -8,15 +8,15 @@ const order = (items: ReturnType<typeof item>[], payout: string | null = "90000"
 const row = (campaignKey: string, spend: string, ids?: string[], day = "2026-10-01T17:00:00.000Z", grain: "DAY" | "HOUR" = "DAY") => ({ campaignKey, spend, start: day, grain, sourceMetrics: ids ? { advertisedItemIds: ids } : undefined });
 const contributions = (base: ReturnType<typeof summarizeProductProfit>, ads: ReturnType<typeof allocateProductAds>) => productProfitContributions(base, ads, [{ sourceItemId: "speaker", name: "Speaker stand" }, { sourceItemId: "lamp", name: "Lamp" }]);
 
-test("50k speaker profit loses its own 10k ads; organic product keeps all profit", () => {
+test("50k speaker profit loses its own 10k ads plus 11% PPN; organic product keeps all profit", () => {
   const base = summarizeProductProfit([order([item("speaker")]), order([item("lamp")], "70000")]);
   const ads = allocateProductAds([row("shop", "10000")], [row("campaign:1", "10000", ["speaker"])]);
   const result = contributions(base, ads);
-  assert.equal(result.products[0].cleanProfit, "40000.0000");
+  assert.equal(result.products[0].cleanProfit, "38900.0000");
   assert.equal(result.products[1].cleanProfit, "30000.0000");
   assert.equal(result.products[1].adSpend, "0.0000");
-  assert.equal(result.total, "70000.0000");
-  assert.equal(result.products[0].percentage, 57.14);
+  assert.equal(result.total, "68900.0000");
+  assert.equal(result.products[0].percentage, 56.45);
 });
 
 test("product IDs group renamed variants; quantity/COGS and mixed-order payout reconcile exactly", () => {
@@ -45,7 +45,7 @@ test("unmapped/shared campaigns stay separate and never charge organic products"
   assert.equal(ads.unassignedSpend, "15000.0000");
   const result = contributions(summarizeProductProfit([order([item("lamp")])]), ads);
   assert.equal(result.products.find(row => row.itemId === "lamp")!.cleanProfit, "50000.0000");
-  assert.equal(result.total, "30000.0000");
+  assert.equal(result.total, "27800.0000");
 });
 
 test("day-by-day mismatches cannot be hidden by another day; conflicting spend stays unassigned", () => {
@@ -57,7 +57,7 @@ test("day-by-day mismatches cannot be hidden by another day; conflicting spend s
 test("ad-only products retain losses; negative profits never turn into positive pie slices", () => {
   const base = summarizeProductProfit([order([item("lamp")])]);
   const result = contributions(base, allocateProductAds([row("shop", "70000")], [row("campaign:1", "70000", ["speaker"])]));
-  assert.equal(result.total, "-20000.0000");
+  assert.equal(result.total, "-27700.0000");
   assert.equal(result.products.find(row => row.itemId === "speaker")!.percentage, null);
   assert.equal(result.products.find(row => row.itemId === "lamp")!.percentage, 100);
   assert.equal(result.hasLosses, true);

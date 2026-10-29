@@ -1,4 +1,5 @@
 import { amountString, amountUnits } from "./money.ts";
+import { advertisingCost } from "./ads-cost.ts";
 import type { OrderProfit, Settlement } from "./profit.ts";
 
 export const OTHER_SHOPEE_FEES = {
@@ -57,12 +58,16 @@ export function summarizeOrderCosts(orders: CostOrder[]): CostSummary {
 }
 
 export function costBreakdown(summary: CostSummary, adSpend: string | null, adsComplete = true) {
-  const items = [...summary.items, ...(adSpend === null ? [] : [{ key: "ads", label: "Advertisement", amount: adSpend }])];
+  const ads = adSpend === null ? null : advertisingCost(adSpend);
+  const items = [...summary.items, ...(ads === null ? [] : [
+    { key: "ads", label: "Advertisement", amount: ads.spend },
+    { key: "ads_ppn", label: "Ad PPN (11%)", amount: ads.ppn },
+  ])];
   const costs = items.filter(item => amountUnits(item.amount) > 0n);
   const credits = items.filter(item => amountUnits(item.amount) < 0n);
   const sales = amountUnits(summary.sales);
-  const cleanProfit = summary.profit !== null && adSpend !== null && adsComplete
-    ? amountUnits(summary.profit) - amountUnits(adSpend) : null;
+  const cleanProfit = summary.profit !== null && ads !== null && adsComplete
+    ? amountUnits(summary.profit) - amountUnits(ads.total) : null;
   // Payouts can include deductions or credits that the named fee fields do not itemize.
   // Reconcile to actual payout profit rather than estimating profit as sales minus known fees.
   const recordedCosts = costs.reduce((sum, item) => sum + amountUnits(item.amount), 0n);

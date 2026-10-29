@@ -16,11 +16,13 @@ function fixture(extra: Record<string, unknown> = {}, cost: string | null = "100
 test("each Shopee fee, affiliate, COGS, refunds and shop advertising have separate non-overlapping shares", () => {
   const summary = summarizeOrderCosts([fixture()]);
   const result = costBreakdown(summary, "7000");
-  assert.equal(result.total, "50000.0000");
-  assert.equal(result.salesPercentage, 50);
+  assert.equal(result.total, "50770.0000");
+  assert.equal(result.salesPercentage, 50.77);
   assert.equal(result.slices.find(item => item.key === "cogs")?.amount, "20000.0000");
   assert.equal(result.slices.find(item => item.key === "ads")?.percentage, 7);
   assert.equal(result.slices.find(item => item.key === "ads")?.salesPercentage, 7);
+  assert.equal(result.slices.find(item => item.key === "ads_ppn")?.amount, "770.0000");
+  assert.equal(result.slices.find(item => item.key === "ads_ppn")?.percentage, 0.77);
   assert.equal(result.slices.find(item => item.key === "seller_order_processing_fee")?.amount, "1250.0000");
   assert.equal(result.slices.find(item => item.key === "campaign_fee")?.amount, "750.0000");
   assert.equal(result.slices.find(item => item.key === "withholding_tax")?.amount, "1000.0000");
@@ -36,7 +38,7 @@ test("older aggregate fee snapshots remain readable and are not presented as inv
   const summary = summarizeOrderCosts([{ ...order, settlement: readSettlement(legacy)! }]);
   assert.equal(summary.groupedFees, 1);
   const result = costBreakdown(summary, "7000");
-  assert.equal(result.total, "50000.0000");
+  assert.equal(result.total, "50770.0000");
   assert.equal(result.slices.find(item => item.key === "other")?.amount, "3000.0000");
   assert.equal(result.slices.some(item => item.key === "campaign_fee"), false);
 });
@@ -50,9 +52,9 @@ test("missing payouts and costs cannot dilute coverage or create fabricated perc
   assert.equal(summary.covered, 1);
   assert.equal(summary.eligible, 3);
   assert.equal(summary.sales, "100000.0000");
-  assert.equal(costBreakdown(summary, "7000").total, "50000.0000");
+  assert.equal(costBreakdown(summary, "7000").total, "50770.0000");
   const noOrders = costBreakdown(summarizeOrderCosts([]), "7000");
-  assert.equal(noOrders.slices[0].percentage, 100);
+  assert.equal(noOrders.slices.reduce((sum, slice) => sum + slice.percentage, 0), 100);
   assert.equal(noOrders.salesPercentage, null);
 });
 
@@ -92,39 +94,39 @@ test("clean profit uses the same settled payout minus COGS and ads as Overview",
   const summary = summarizeOrderCosts([fixture()]);
   const result = costBreakdown(summary, "7000");
   assert.equal(summary.profit, "57000.0000");
-  assert.equal(result.cleanProfit, "50000.0000");
-  assert.equal(result.profitPercentage, 50);
+  assert.equal(result.cleanProfit, "49230.0000");
+  assert.equal(result.profitPercentage, 49.23);
   assert.equal(result.chartTotal, "100000.0000");
-  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 50);
+  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 49.23);
 });
 
 test("unitemized payout deductions reconcile the pie without inflating clean profit", () => {
   const result = costBreakdown(summarizeOrderCosts([fixture({ escrow_amount_after_adjustment: "65000" })]), "7000");
-  assert.equal(result.cleanProfit, "38000.0000");
-  assert.equal(result.profitPercentage, 38);
+  assert.equal(result.cleanProfit, "37230.0000");
+  assert.equal(result.profitPercentage, 37.23);
   assert.equal(result.slices.find(item => item.key === "other_deductions")?.amount, "12000.0000");
-  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 38);
-  assert.equal(result.total, "62000.0000");
+  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 37.23);
+  assert.equal(result.total, "62770.0000");
   assert.equal(result.chartTotal, "100000.0000");
 });
 
 test("payout credits preserve actual profit and clearly distinguish sales margin from pie share", () => {
   const result = costBreakdown(summarizeOrderCosts([fixture({ escrow_amount_after_adjustment: "87000" })]), "7000");
-  assert.equal(result.cleanProfit, "60000.0000");
-  assert.equal(result.profitPercentage, 60);
+  assert.equal(result.cleanProfit, "59230.0000");
+  assert.equal(result.profitPercentage, 59.23);
   assert.equal(result.otherIncome, "10000.0000");
   assert.equal(result.chartTotal, "110000.0000");
-  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 54.55);
+  assert.equal(result.slices.find(item => item.key === "profit")?.percentage, 53.85);
 });
 
 test("losses and zero profit never become positive pie slices", () => {
   const summary = summarizeOrderCosts([fixture()]);
   const loss = costBreakdown(summary, "70000");
-  assert.equal(loss.cleanProfit, "-13000.0000");
-  assert.equal(loss.profitPercentage, -13);
+  assert.equal(loss.cleanProfit, "-20700.0000");
+  assert.equal(loss.profitPercentage, -20.7);
   assert.equal(loss.slices.some(item => item.key === "profit"), false);
   assert.ok(loss.slices.every(item => item.value > 0));
-  const zero = costBreakdown(summary, "57000");
+  const zero = costBreakdown({ ...summary, profit: "63270" }, "57000");
   assert.equal(zero.cleanProfit, "0.0000");
   assert.equal(zero.slices.find(item => item.key === "profit")?.percentage, 0);
 });

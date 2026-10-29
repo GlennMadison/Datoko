@@ -32,22 +32,22 @@ test("automatic estimates restate original-date cohorts with current owner-scope
     await importSyncedAdReport(shop, 1, [row], now);
     let data = await advertisementForOwner(ownerId, period);
     assert.equal(data.summary.originalRoas, "10.00"); assert.equal(data.summary.realRoas, null);
-    assert.equal(data.estimate?.roas, "8.00"); assert.equal(data.estimate?.unpaidRevenue, "200.0000");
+    assert.equal(data.estimate?.roas, "7.21"); assert.equal(data.estimate?.unpaidRevenue, "200.0000");
     assert.equal((await advertisementForOwner("outsider", period)).estimate, undefined);
     await db.order.update({ where: { id: ids[8] }, data: { status: "COMPLETED", paymentStatus: "PAID", sourceUpdatedAt: now } });
-    assert.equal((await advertisementForOwner(ownerId, period)).estimate?.roas, "9.00");
+    assert.equal((await advertisementForOwner(ownerId, period)).estimate?.roas, "8.11");
     await db.order.update({ where: { id: ids[0] }, data: { status: "CANCELLED", sourceUpdatedAt: now } });
     await db.returnCase.create({ data: { shopId: shop.id, orderId: ids[1], returnSn: "ESTIMATE-RETURN", status: "ACCEPTED", confirmedRefund: "50", reportedAmount: "50", sourceUpdatedAt: now } });
     await db.financialSnapshot.create({ data: { orderId: ids[1], source: "SHOPEE_ESCROW", sourceKey: "test", hash: "test", revision: 1,
       amounts: { payout: "50", commission: "0", service: "0", transaction: "0", affiliate: "0", other: "0", refunds: "50", adjustment: "0" } } });
     data = await advertisementForOwner(ownerId, period);
-    assert.equal(data.estimate?.roas, "7.50"); assert.equal(data.estimate?.refundedRevenue, "50.0000"); assert.equal(data.estimate?.storeRevenue, "750.0000");
-    assert.equal(data.summary.originalRoas, "10.00"); assert.equal(data.points[0].estimated, 7.5);
+    assert.equal(data.estimate?.roas, "6.76"); assert.equal(data.estimate?.refundedRevenue, "50.0000"); assert.equal(data.estimate?.storeRevenue, "750.0000");
+    assert.equal(data.summary.originalRoas, "10.00"); assert.equal(data.points[0].estimated, 6.76);
     const campaign: AdsRow = { ...row, campaignKey: "campaign:1", campaignName: "Product one ad", spend: "60", revenue: "600", sourceMetrics: { directRevenue: "600", advertisedItemIds: ["1"] } };
     await importSyncedAdReport(shop, 1, [campaign], now);
     data = await advertisementForOwner(ownerId, period);
-    assert.equal(data.estimate?.roas, "7.20"); assert.equal(data.estimate?.storeRoas, "7.50");
-    assert.equal(data.campaigns.find(value => value.key === "campaign:1")?.estimatedRoas, "7.00");
+    assert.equal(data.estimate?.roas, "6.49"); assert.equal(data.estimate?.storeRoas, "6.76");
+    assert.equal(data.campaigns.find(value => value.key === "campaign:1")?.estimatedRoas, "6.31");
     assert.equal((await advertisementForOwner(ownerId, period, { campaign: "campaign:1" })).estimate?.storeRoas, null);
     // A metric correction can return to a previously seen digest without a unique violation.
     const newer = new Date(now.getTime() + 60_000), newest = new Date(now.getTime() + 120_000);
