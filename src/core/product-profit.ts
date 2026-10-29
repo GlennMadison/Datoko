@@ -1,4 +1,5 @@
 import { amountString, amountUnits } from "./money.ts";
+import { advertisingCost } from "./ads-cost.ts";
 
 type ProfitItem = { itemId: string; quantity: number; paidUnitPrice: string; costSnapshot: string | null };
 type ProfitOrder = { status: string; payout: string | null; items: ProfitItem[] };
@@ -70,7 +71,17 @@ export function allocateProductAds(shopRows: AdBucket[], campaignRows: AdBucket[
 
 export function productProfitContributions(base: ProductProfitBase, ads: ProductAdSpend, names: { sourceItemId: string; name: string }[]) {
   const profits = new Map(base.products.map(row => [row.itemId, amountUnits(row.profit)]));
-  const spend = new Map(ads.products.map(row => [row.itemId, amountUnits(row.spend)]));
+  const spend = new Map<string, bigint>();
+  let assignedBase = 0n, assignedCost = 0n;
+  // Cumulative rounding keeps product and unassigned costs equal to the shop
+  // expense, even when individual PPN amounts round at the ledger precision.
+  for (const row of ads.products) {
+    assignedBase += amountUnits(row.spend);
+    const cumulativeCost = amountUnits(advertisingCost(amountString(assignedBase)).total);
+    spend.set(row.itemId, (spend.get(row.itemId) ?? 0n) + cumulativeCost - assignedCost);
+    assignedCost = cumulativeCost;
+  }
+  const unassignedSpend = amountString(amountUnits(advertisingCost(ads.totalSpend).total) - assignedCost);
   const titles = new Map(names.map(row => [row.sourceItemId, row.name]));
   const ids = [...new Set([...profits.keys(), ...spend.keys()])];
   const products = ids.map(itemId => {
@@ -78,10 +89,10 @@ export function productProfitContributions(base: ProductProfitBase, ads: Product
     return { itemId, name: titles.get(itemId) ?? `Product ${itemId}`, profitBeforeAds: amountString(gross), adSpend: amountString(advertising), cleanProfit: amountString(gross - advertising) };
   }).sort((a, b) => Number(b.cleanProfit) - Number(a.cleanProfit) || a.itemId.localeCompare(b.itemId));
   const positiveTotal = products.reduce((sum, row) => sum + (amountUnits(row.cleanProfit) > 0n ? amountUnits(row.cleanProfit) : 0n), 0n);
-  const total = products.reduce((sum, row) => sum + amountUnits(row.cleanProfit), -amountUnits(ads.unassignedSpend));
+  const total = products.reduce((sum, row) => sum + amountUnits(row.cleanProfit), -amountUnits(unassignedSpend));
   return {
     products: products.map(row => ({ ...row, percentage: amountUnits(row.cleanProfit) > 0n && positiveTotal > 0n ? Number(amountUnits(row.cleanProfit) * 10_000n / positiveTotal) / 100 : null })),
-    total: amountString(total), positiveTotal: amountString(positiveTotal), unassignedSpend: ads.unassignedSpend,
+    total: amountString(total), positiveTotal: amountString(positiveTotal), unassignedSpend,
     hasLosses: products.some(row => amountUnits(row.cleanProfit) < 0n),
     partial: base.covered < base.eligible, mixedOrders: base.mixedOrders,
   };

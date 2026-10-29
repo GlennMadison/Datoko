@@ -6,7 +6,7 @@ import { Card, EmptyState } from "@/components/ui";
 import { ProfitDonut, percentage } from "@/components/profit-donut";
 
 const colors: Record<string, string> = {
-  profit: "var(--chart-primary)", cogs: "var(--color-slate-500)", ads: "var(--color-amber-500)", affiliate: "var(--color-violet-500)",
+  profit: "var(--chart-primary)", cogs: "var(--color-slate-500)", ads: "var(--color-amber-500)", ads_ppn: "var(--color-orange-500)", affiliate: "var(--color-violet-500)",
   commission: "var(--color-teal-500)", service: "var(--color-blue-500)", transaction: "var(--color-cyan-500)",
   refunds: "var(--color-rose-500)", other: "var(--color-stone-500)", other_deductions: "var(--color-stone-500)",
 };

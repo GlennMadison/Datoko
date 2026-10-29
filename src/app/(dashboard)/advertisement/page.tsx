@@ -11,6 +11,7 @@ import { adsMoney, adsRatio } from "@/lib/ads-format";
 import { timeLabel } from "@/lib/format";
 import { AdsSyncControls } from "@/components/ads-sync-controls";
 import { adsSyncIssue } from "@/core/shopee-ads";
+import { advertisingCost } from "@/core/ads-cost";
 
 const estimateErrors: Record<string, string> = {
   ORDER_SYNC_INCOMPLETE: "Sync your shop to complete order history for these dates.",
@@ -37,10 +38,11 @@ export default async function Advertisement({ searchParams }: { searchParams: Pr
   const result = data.summary;
   const estimate = data.estimate;
   const hasData = !result.issues.includes("NO_ADS_DATA");
+  const adCost = hasData ? advertisingCost(result.spend) : null;
   const cards = [
-    { label: "Ad Spend", value: adsMoney(hasData ? result.spend : null), id: "ad-spend" },
-    { label: "Original ROAS", value: adsRatio(result.originalRoas), id: "original-roas" },
-    { label: "Estimated Adjusted ROAS", value: adsRatio(estimate?.roas ?? null), id: "estimated-roas" },
+    { label: "Ad Spend", value: adsMoney(adCost?.total ?? null), note: adCost ? `Base ${adsMoney(adCost.spend)} + PPN 11% ${adsMoney(adCost.ppn)}` : undefined, id: "ad-spend" },
+    { label: "Original ROAS", value: adsRatio(result.originalRoas), note: "Shopee ROAS · before PPN", id: "original-roas" },
+    { label: "Estimated Adjusted ROAS", value: adsRatio(estimate?.roas ?? null), note: "After exclusions and 11% PPN", id: "estimated-roas" },
     { label: "Original Revenue", value: adsMoney(hasData ? result.originalRevenue : null), id: "original-revenue" },
     { label: "Estimated Revenue", value: adsMoney(estimate?.revenue ?? null), id: "estimated-revenue" },
     { label: "Cancelled, Unpaid & Refunded Revenue", value: adsMoney(estimate?.excluded ?? null), id: "adjusted-outcomes-revenue" },
@@ -55,7 +57,7 @@ export default async function Advertisement({ searchParams }: { searchParams: Pr
   return <div className="campaign-page">
     <PageHeading title="Advertisement" actions={data.mode === "live" ? <AdsSyncControls connected={data.sync?.connected ?? false} pending={data.sync?.pending ?? false} intervalMinutes={data.sync?.intervalMinutes ?? 10} lastSyncLabel={timeLabel(data.sync?.lastSuccessAt ?? null)}/> : undefined}/>
     <dl className="metrics-grid campaign-metrics" aria-label="Advertising summary">
-      {cards.map(card => <Metric key={card.id} label={card.label} value={card.value} featured={card.id === "estimated-roas"} testId={card.id}/>)}
+      {cards.map(card => <Metric key={card.id} label={card.label} value={card.value} note={card.note} featured={card.id === "estimated-roas"} testId={card.id}/>)}
     </dl>
     {problems.length > 0 && <div className="notice" role="status">{problems.join(" ")}</div>}
     <ReportingControls period={data.period}><AdvertisementFilters datasets={data.datasets} dataset={data.datasetKey} campaigns={data.campaigns} campaign={data.campaignKey}/></ReportingControls>
@@ -68,7 +70,7 @@ export default async function Advertisement({ searchParams }: { searchParams: Pr
     </Card>
     <Card role="region" aria-label="Campaign performance">
       <div className="card-heading"><h2>Campaign performance</h2></div>
-      {data.campaigns.length ? <div className="table-scroll" tabIndex={0}><Table><TableHeader><TableRow><TableHead>Campaign</TableHead><TableHead>Ad Spend</TableHead><TableHead>Original ROAS</TableHead><TableHead>Estimated Adjusted ROAS</TableHead></TableRow></TableHeader><TableBody>{data.campaigns.map(row => <TableRow key={row.key}><TableCell>{row.name}</TableCell><TableCell>{adsMoney(row.spend)}</TableCell><TableCell>{adsRatio(row.originalRoas)}</TableCell><TableCell>{adsRatio(row.estimatedRoas ?? null)}</TableCell></TableRow>)}</TableBody></Table></div> : <EmptyState title="No campaign data">Sync ads to load your campaigns.</EmptyState>}
+      {data.campaigns.length ? <div className="table-scroll" tabIndex={0}><Table><TableHeader><TableRow><TableHead>Campaign</TableHead><TableHead>Ad Spend (excl. PPN)</TableHead><TableHead>PPN (11%)</TableHead><TableHead>Total Ad Cost</TableHead><TableHead>Original ROAS</TableHead><TableHead>Estimated Adjusted ROAS</TableHead></TableRow></TableHeader><TableBody>{data.campaigns.map(row => { const cost = advertisingCost(row.spend); return <TableRow key={row.key}><TableCell>{row.name}</TableCell><TableCell>{adsMoney(cost.spend)}</TableCell><TableCell>{adsMoney(cost.ppn)}</TableCell><TableCell>{adsMoney(cost.total)}</TableCell><TableCell>{adsRatio(row.originalRoas)}</TableCell><TableCell>{adsRatio(row.estimatedRoas ?? null)}</TableCell></TableRow>; })}</TableBody></Table></div> : <EmptyState title="No campaign data">Sync ads to load your campaigns.</EmptyState>}
     </Card>
   </div>;
 }

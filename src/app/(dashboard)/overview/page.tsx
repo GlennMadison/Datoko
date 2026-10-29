@@ -10,6 +10,7 @@ import { ReportLink } from "@/components/report-link";
 import { getDashboardData } from "@/server/dashboard";
 import { getAdvertisementData } from "@/server/ads";
 import { profitAfterAdSpend } from "@/core/overview-profit";
+import { advertisingCost } from "@/core/ads-cost";
 import { rupiah, number, timeLabel } from "@/lib/format";
 import { Card, EmptyState, PageHeading, Metric } from "@/components/ui";
 import { Icon } from "@/components/icons";
@@ -32,16 +33,18 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   const cancelled = cancellationDetails(data.cancellations ?? { all: status.cancelled, paid: 0, unpaid: 0, returned: 0, unknown: status.cancelled });
   const demo = data.mode === "demo";
   const adSpend = ads.coverage.available > 0 ? ads.summary.spend : null;
+  const adCost = adSpend === null ? null : advertisingCost(adSpend);
   const adsComplete = ads.coverage.available > 0 && ads.coverage.available === ads.coverage.expected;
   const netProfit = profitAfterAdSpend(data.metrics.profit, adsComplete ? adSpend : null);
   const previousAdSpend = previousAds && previousAds.coverage.available > 0 ? previousAds.summary.spend : null;
+  const previousAdCost = previousAdSpend === null ? null : advertisingCost(previousAdSpend);
   const previousAdsComplete = previousAds && previousAds.coverage.available > 0 && previousAds.coverage.available === previousAds.coverage.expected;
   const previousProfit = previousData ? profitAfterAdSpend(previousData.metrics.profit, previousAdsComplete ? previousAdSpend : null) : null;
   const comparisons = previousPeriod && previousData ? [
     { current: data.metrics.sales, previous: previousData.metrics.sales, format: rupiah },
     { current: data.metrics.orders, previous: previousData.metrics.orders, format: number },
     { current: netProfit, previous: previousProfit, format: rupiah },
-    { current: adSpend === null ? null : Number(adSpend), previous: previousAdSpend === null ? null : Number(previousAdSpend), format: rupiah, lowerIsBetter: true },
+    { current: adCost === null ? null : Number(adCost.total), previous: previousAdCost === null ? null : Number(previousAdCost.total), format: rupiah, lowerIsBetter: true },
   ] : null;
   // Both reports use the same time buckets. Do not allocate daily spend to hours.
   const trend = data.trend.map((point, index) => {
@@ -52,7 +55,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     { label: "Sales", value: rupiah(data.metrics.sales), note: "Paid orders by order date, after confirmed refunds", icon: "money" },
     { label: "Orders placed", value: number(data.metrics.orders), note: `${data.metrics.completed} completed / ${data.metrics.cancelled} cancelled (unpaid excluded)`, icon: "orders" },
     { label: "Net profit", value: rupiah(netProfit), note: !adsComplete ? "Waiting for complete ad spend data" : data.profitSummary ? `${data.profitSummary.covered} / ${data.profitSummary.eligible} completed orders � ${data.profitSummary.estimated ? "includes estimated costs" : "after COGS, Shopee deductions and ads"}` : demo && netProfit !== null ? "Sample payouts, COGS and ad spend" : "Waiting for payouts and COGS", icon: "products" },
-    { label: "Ad spend", value: rupiah(adSpend === null ? null : Number(adSpend)), note: adSpend === null ? "Waiting for ad sync" : !adsComplete ? "Partial data for the selected period" : "Shop advertising in the selected period", icon: "advertisement" },
+    { label: "Ad spend", value: rupiah(adCost === null ? null : Number(adCost.total)), note: adCost === null ? "Waiting for ad sync" : `${!adsComplete ? "Partial data · " : ""}Base ${rupiah(Number(adCost.spend))} + PPN 11% ${rupiah(Number(adCost.ppn))}`, icon: "advertisement" },
   ];
   const topProducts = [...data.products].sort((a, b) => b.units - a.units).slice(0, 4);
   return <>

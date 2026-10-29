@@ -1,5 +1,6 @@
 import { amountString, amountUnits } from "./money.ts";
 import { ratioString } from "./ads-roas.ts";
+import { advertisingCost } from "./ads-cost.ts";
 import { localDate } from "./reporting-period.ts";
 
 export type EstimateOrder = {
@@ -119,14 +120,16 @@ export function estimateAds(reports: EstimateReport[], context: EstimateContext,
       revenue += roundedShare(broad, cohort.retained, cohort.placed);
     }
   }
+  // Adjusted ratios include PPN; Original ROAS continues to use source spend.
+  const totalCost = amountUnits(advertisingCost(amountString(spend)).total);
   const total = context.total;
   if (total.refunded) warnings.add("PROPORTIONAL_REFUND_ALLOCATION");
   if (total.pending) warnings.add("PENDING_OUTCOMES");
   const storeComplete = !context.issues.length && !total.issues.length;
   return {
-    roas: issues.size ? null : ratioString(revenue, spend, 2), revenue: issues.size ? null : amountString(revenue),
+    roas: issues.size ? null : ratioString(revenue, totalCost, 2), revenue: issues.size ? null : amountString(revenue),
     excluded: issues.size ? null : amountString(original - min(original, revenue)),
-    storeRoas: storeComplete && complete ? ratioString(total.retained, spend, 2) : null,
+    storeRoas: storeComplete && complete ? ratioString(total.retained, totalCost, 2) : null,
     storeRevenue: storeComplete ? amountString(total.retained) : null, placedRevenue: amountString(total.placed),
     unpaidRevenue: amountString(total.unpaid), cancelledRevenue: amountString(total.cancelled), refundedRevenue: amountString(total.refunded),
     orders: total.count, pendingOrders: total.pending, unknownOrders: total.unknown,
