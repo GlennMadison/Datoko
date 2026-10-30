@@ -4,10 +4,9 @@ import { Button as ShadcnButton } from "./ui/button";
 import { Card as ShadcnCard } from "./ui/card";
 import { Badge as ShadcnBadge } from "./ui/badge";
 import { cn } from "@/lib/utils";
-import { Icon } from "./icons";
 
 export function Card({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <ShadcnCard className={cn("card gap-0 overflow-hidden py-0 shadow-xs", className)} {...props}>{children}</ShadcnCard>;
+  return <ShadcnCard className={cn("card gap-0 overflow-hidden py-0 shadow-none", className)} {...props}>{children}</ShadcnCard>;
 }
 export function Button({ className, variant, ...props }: ComponentProps<typeof ShadcnButton>) {
   return <ShadcnButton variant={variant ?? (className?.includes("button-outline") ? "outline" : "default")} className={cn("text-xs", className)} {...props}/>;
@@ -30,11 +29,11 @@ export function EmptyState({ title, children }: { title: string; children: React
 export function PageHeading({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
   return <div className="page-heading"><div><h1>{title}</h1>{description && <p className="page-description">{description}</p>}</div>{actions && <div className="heading-actions">{actions}</div>}</div>;
 }
-export function Metric({ label, value, note, featured = false, testId, icon, comparison }: { label: string; value: ReactNode; note?: string; featured?: boolean; testId?: string; icon?: string; comparison?: ReactNode }) {
-  return <div className={cn("metric rounded-xl border bg-card p-5 shadow-xs", featured && "border-primary/30")}>
-    <dt className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground"><span>{label}</span>{icon && <Icon name={icon} size={16}/>}</dt>
-    <dd className={cn("metric-value numeric mt-3 text-[26px] font-semibold leading-tight tracking-tight", featured && "text-primary")} data-testid={testId}>{value}</dd>
-    {note && <dd className="metric-note mt-2 text-[11px] leading-relaxed text-muted-foreground">{note}</dd>}
-    {comparison && <dd className="mt-3 border-t border-border/60 pt-3">{comparison}</dd>}
+export function Metric({ label, value, note, featured = false, testId, comparison }: { label: string; value: ReactNode; note?: string; featured?: boolean; testId?: string; icon?: string; comparison?: ReactNode }) {
+  return <div className={cn("metric", featured && "metric-featured")}>
+    <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+    <dd className="metric-value numeric mt-3 text-[28px] font-medium leading-tight" data-testid={testId}>{value}</dd>
+    {note && <dd className="metric-note mt-2 text-xs leading-relaxed text-muted-foreground">{note}</dd>}
+    {comparison && <dd className="metric-comparison">{comparison}</dd>}
   </div>;
 }
