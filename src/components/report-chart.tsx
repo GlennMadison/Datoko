@@ -11,11 +11,11 @@ export function ReportChart({ data, series, unit = "IDR", label }: { data: Repor
   const axisFormat = (value: number) => unit === "ROAS" ? value + "x" : unit === "IDR" ? Number(value) / 1000 + "k" : new Intl.NumberFormat("en-US", { notation: "compact" }).format(value);
   return <>
     <div className="report-chart" role="img" aria-label={label + ". " + (unit === "IDR" ? "Values in IDR; axis in thousands." : unit === "ROAS" ? "Revenue per unit of ad spend." : "Number of items.") + " Exact values are available in View chart data."}>
-      <ResponsiveContainer width="100%" height={270}><ComposedChart data={data} margin={{ left: 0, right: 16, top: 12, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={312}><ComposedChart data={data} margin={{ left: 0, right: 20, top: 16, bottom: 4 }}>
         <defs><linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={series[0]?.color} stopOpacity={0.17}/><stop offset="95%" stopColor={series[0]?.color} stopOpacity={0.01}/></linearGradient></defs>
-        <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="3 4"/>
-        <XAxis dataKey="date" axisLine={false} tickLine={false} minTickGap={35} tickMargin={12} tick={{ fill: "var(--muted)", fontSize: 10 }}/>
-        <YAxis axisLine={false} tickLine={false} width={60} allowDecimals={unit !== "count"} tickMargin={8} tick={{ fill: "var(--muted)", fontSize: 10 }} tickFormatter={axisFormat}/>
+        <CartesianGrid vertical={false} stroke="var(--line)" strokeDasharray="2 6"/>
+        <XAxis dataKey="date" axisLine={false} tickLine={false} minTickGap={40} tickMargin={12} tick={{ fill: "var(--muted)", fontSize: 12 }}/>
+        <YAxis axisLine={false} tickLine={false} width={68} allowDecimals={unit !== "count"} tickMargin={8} tick={{ fill: "var(--muted)", fontSize: 12 }} tickFormatter={axisFormat}/>
         <Tooltip labelStyle={{ color: "var(--ink)", marginBottom: 6, fontWeight: 500 }} cursor={{ stroke: "var(--muted)", strokeDasharray: "3 3" }} formatter={value => format(value)} contentStyle={{ backgroundColor: "var(--surface)", color: "var(--ink)", borderRadius: 10, borderColor: "var(--line)", padding: "12px 16px", fontSize: 11, boxShadow: "0 8px 24px var(--shadow)" }}/>
         {series.length > 1 && <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: 11, paddingTop: 12 }}/>}
         {series.map((value, index) => index === 0 && series.length === 1

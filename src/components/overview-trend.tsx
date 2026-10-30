@@ -33,11 +33,11 @@ export function OverviewTrend({ data }: { data: ReportChartPoint[] }) {
     <div className="card-heading report-chart-heading">
       <div><h2>{selected.title}</h2><p>{selected.note}</p></div>
       <div className="overview-chart-controls">
-        <label className="overview-order-scope"><span>Order scope</span><NativeSelect aria-label="Order scope" value={scope} onChange={event => setScope(event.target.value as keyof typeof descriptions)} className="h-8 text-[11px]">
+        <label className="overview-order-scope"><span>Order scope</span><NativeSelect aria-label="Order scope" value={scope} onChange={event => setScope(event.target.value as keyof typeof descriptions)} className="h-9 text-xs">
           <NativeSelectOption value="paid">Sales (paid orders)</NativeSelectOption>
           <NativeSelectOption value="completed">Completed sales</NativeSelectOption>
         </NativeSelect></label>
-        <TabsList className="h-8 bg-muted/70">{Object.entries(views).map(([key, value]) => <TabsTrigger key={key} value={key} className="px-3 text-[11px]">{value.label}</TabsTrigger>)}</TabsList>
+        <TabsList className="h-9 bg-muted">{Object.entries(views).map(([key, value]) => <TabsTrigger key={key} value={key} className="px-3 text-xs">{value.label}</TabsTrigger>)}</TabsList>
       </div>
     </div>
     <TabsContent value={view} className="mt-0"><ReportChart data={data} series={[{ key: selected.key, label: selected.series, color: "var(--chart-primary)" }]} unit={views[view].unit} label={selected.series + " over time"}/></TabsContent>

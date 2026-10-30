@@ -36,9 +36,9 @@ function WorkspaceNavigation() {
         <SidebarGroupLabel className="px-3 text-[11px] font-medium text-muted-foreground">{group.label}</SidebarGroupLabel>
         <SidebarGroupContent><SidebarMenu className="gap-1">{group.links.map(item =>
           <SidebarMenuItem key={item.href}>
-            <SidebarMenuButton asChild isActive={pathname.startsWith(item.href)} tooltip={item.label} className="h-10 rounded-lg px-3 text-[13px] font-medium data-[active=true]:bg-primary/10 data-[active=true]:text-primary">
+            <SidebarMenuButton asChild isActive={pathname.startsWith(item.href)} tooltip={item.label} className="h-9 rounded-lg px-3 text-sm font-normal data-[active=true]:bg-secondary data-[active=true]:font-medium data-[active=true]:text-foreground data-[active=true]:ring-1 data-[active=true]:ring-border">
               <Link href={item.href + (group.report && period.size ? "?" + period : "")} onClick={() => setOpenMobile(false)} aria-current={pathname.startsWith(item.href) ? "page" : undefined}>
-                <item.icon className="size-[18px]" aria-hidden="true"/><span>{item.label}</span>
+                <item.icon className="size-4 text-muted-foreground" strokeWidth={1.5} aria-hidden="true"/><span>{item.label}</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
@@ -72,13 +72,13 @@ function ShellContents({ children, demo, name }: { children: ReactNode; demo: bo
       <SidebarRail/>
     </Sidebar>
     <SidebarInset className="min-w-0 bg-background">
-      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur-sm sm:px-7">
+      <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-background px-4 sm:px-8">
         <div className="flex min-w-0 items-center gap-3"><SidebarTrigger className="-ml-1" aria-label="Toggle sidebar" aria-expanded={isMobile ? openMobile : open}/><Separator orientation="vertical" className="!h-4"/><span className="truncate text-[13px] font-medium">{current}</span></div>
-        <div className="flex shrink-0 items-center gap-3"><span className="hidden text-xs text-muted-foreground sm:inline">Jakarta · WIB</span><ThemeSwitcher/><Badge variant="outline" className="hidden gap-1.5 bg-card text-[11px] font-normal sm:flex"><Store className="size-3" aria-hidden="true"/>Shopee</Badge></div>
+        <div className="flex shrink-0 items-center gap-3"><span className="hidden text-xs text-muted-foreground sm:inline">Jakarta � WIB</span><ThemeSwitcher/><Badge variant="outline" className="hidden gap-1.5 bg-card text-[11px] font-normal sm:flex"><Store className="size-3" aria-hidden="true"/>Shopee</Badge></div>
       </header>
-      {demo && <div className="demo-banner"><span><strong>Demo workspace</strong><span className="hidden sm:inline"> · </span><span>Sample data. No Shopee shop is connected.</span></span><Link href="/settings/integrations">Connection settings <ArrowUpRight className="size-3.5" aria-hidden="true"/></Link></div>}
+      {demo && <div className="demo-banner"><span><strong>Demo workspace</strong><span className="hidden sm:inline"> � </span><span>Sample data. No Shopee shop is connected.</span></span><Link href="/settings/integrations">Connection settings <ArrowUpRight className="size-3.5" aria-hidden="true"/></Link></div>}
       <main id="main-content" className="main-content" tabIndex={-1}>{children}</main>
-      <footer className="footer"><span className="flex items-center gap-1.5"><ChartNoAxesCombined className="size-3.5" aria-hidden="true"/>Datoko</span><span>IDR · Asia/Jakarta (WIB)</span></footer>
+      <footer className="footer"><span className="flex items-center gap-1.5"><ChartNoAxesCombined className="size-3.5" aria-hidden="true"/>Datoko</span><span>IDR � Asia/Jakarta (WIB)</span></footer>
     </SidebarInset>
   </>;
 }
