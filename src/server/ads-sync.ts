@@ -162,7 +162,7 @@ export async function syncShopAdsHistory(shopId: string, generation: number, con
 
 export async function syncDueAds(controls: Controls = {}) {
   const config = getConfig(), db = getDb();
-  const shops = await db.shop.findMany({ where: { environment: config.SHOPEE_ENV, connection: { status: "CONNECTED" } }, include: { connection: true, syncStates: true } });
+  const shops = await db.shop.findMany({ where: { environment: config.SHOPEE_ENV, connection: { status: "CONNECTED" } }, select: { id: true, connection: { select: { version: true } }, syncStates: { select: { resource: true, checkpoint: true, lastSuccessAt: true, lastErrorCode: true, updatedAt: true } } } });
   const due = shops.filter(shop => {
     const main = shop.syncStates.find(s => s.resource === "ads");
     const requestAt = shop.syncStates.find(s => s.resource === "ads-request")?.checkpoint ?? null;

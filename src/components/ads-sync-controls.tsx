@@ -1,18 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "./ui";
 import { Icon } from "./icons";
+import { SYNC_REQUESTED_EVENT } from "@/core/workspace-refresh";
 
 export function AdsSyncControls({ connected, pending, intervalMinutes, lastSyncLabel }: { connected: boolean; pending: boolean; intervalMinutes: number; lastSyncLabel: string }) {
-  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  useEffect(() => {
-    if (!connected) return;
-    const timer = setInterval(() => router.refresh(), 30_000);
-    return () => clearInterval(timer);
-  }, [connected, router]);
   useEffect(() => { if (!pending) setMessage(""); }, [pending]);
   async function sync() {
     if (busy || !connected || pending) return;
@@ -21,7 +15,7 @@ export function AdsSyncControls({ connected, pending, intervalMinutes, lastSyncL
       const response = await fetch("/api/advertisement/sync", { method: "POST" });
       if (!response.ok) throw new Error();
       setMessage("Ads sync queued. The worker usually starts within a minute.");
-      router.refresh();
+      window.dispatchEvent(new Event(SYNC_REQUESTED_EVENT));
     } catch { setMessage("Could not queue ads sync. Check your shop connection and try again."); }
     finally { setBusy(false); }
   }

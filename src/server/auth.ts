@@ -47,11 +47,11 @@ export async function requireUser(headers: Headers) {
   const session = await getAuth().api.getSession({ headers });
   if (!session) throw new AppError("SIGN_IN_REQUIRED", 401);
   if (config.AUTH_METHOD === "email-password") {
-    const account = await getDb().account.findFirst({ where: { userId: session.user.id, providerId: "credential", password: { not: null } } });
-    if (!account?.password) throw new AppError("AUTH_METHOD_REQUIRED", 403);
+    const account = await getDb().account.findFirst({ where: { userId: session.user.id, providerId: "credential", password: { not: null } }, select: { id: true } });
+    if (!account) throw new AppError("AUTH_METHOD_REQUIRED", 403);
   } else {
     if (!session.user.emailVerified) throw new AppError("AUTH_METHOD_REQUIRED", 403);
-    const account = await getDb().account.findFirst({ where: { userId: session.user.id, providerId: "google" } });
+    const account = await getDb().account.findFirst({ where: { userId: session.user.id, providerId: "google" }, select: { id: true } });
     if (!account) throw new AppError("AUTH_METHOD_REQUIRED", 403);
   }
   return { ownerId: session.user.id, sessionId: session.session.id, name: session.user.name };

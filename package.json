@@ -23,6 +23,7 @@
     "test:e2e": "node scripts/run-browser-tests.mjs",
     "test:auth": "node scripts/run-browser-tests.mjs --auth",
     "check": "npm run test && npm run typecheck",
+    "usage:db": "tsx scripts/database-usage.ts",
     "secrets": "node scripts/generate-secrets.mjs"
   },
   "dependencies": {

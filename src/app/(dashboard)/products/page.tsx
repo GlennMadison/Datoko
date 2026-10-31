@@ -1,5 +1,5 @@
 import { OrderDetailsSyncButton } from "@/components/order-details-sync-button";
-import { getDashboardData } from "@/server/dashboard";
+import { getProductData } from "@/server/page-data";
 import { Card, Badge, EmptyState, PageHeading } from "@/components/ui";
 import { ProductTable } from "@/components/product-table";
 import { ReportChart } from "@/components/report-chart";
@@ -8,7 +8,7 @@ import { pageReportPeriod, type ReportQuery } from "@/core/reporting-period";
 
 export default async function Products({ searchParams }: { searchParams: Promise<ReportQuery> }) {
   const period = pageReportPeriod(await searchParams);
-  const data = await getDashboardData(period);
+  const data = await getProductData(period);
   const missingCosts = data.products.reduce((sum, product) => sum + product.missingCosts, 0);
   return <>
     <PageHeading title="Products & costs" actions={data.shop && <OrderDetailsSyncButton shopId={data.shop.id} disabled={data.mode === "demo" || data.shop.status !== "CONNECTED"}/>} description="Set a unit cost for each variant. Past orders keep their original cost."/>

@@ -1,7 +1,7 @@
 import { OrderDetailsSyncButton } from "@/components/order-details-sync-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ReportLink } from "@/components/report-link";
-import { getDashboardData } from "@/server/dashboard";
+import { getReturnData } from "@/server/page-data";
 import { Card, Badge, Status, EmptyState, PageHeading } from "@/components/ui";
 import { rupiah, timeLabel } from "@/lib/format";
 import { ReportChart } from "@/components/report-chart";
@@ -10,7 +10,7 @@ import { pageReportPeriod, type ReportQuery } from "@/core/reporting-period";
 
 export default async function Returns({ searchParams }: { searchParams: Promise<ReportQuery> }) {
   const period = pageReportPeriod(await searchParams);
-  const data = await getDashboardData(period);
+  const data = await getReturnData(period);
   return <>
     <PageHeading title="Returns" actions={data.shop && <OrderDetailsSyncButton shopId={data.shop.id} label="Refresh returns" disabled={data.mode === "demo" || data.shop.status !== "CONNECTED"}/>}/>
     {!data.returnsReady && data.mode !== "demo" && <div className="notice"><strong>Return sync is pending.</strong><span>{data.returnsError === "SHOPEE_PERMISSION_DENIED" ? "Shopee has not granted return access to this app." : "Refresh returns to import the latest cases."}</span></div>}

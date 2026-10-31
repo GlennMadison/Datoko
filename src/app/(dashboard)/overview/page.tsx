@@ -18,7 +18,7 @@ import { OverviewTrend } from "@/components/overview-trend";
 import { ReportingControls } from "@/components/reporting-controls";
 import { pageReportPeriod, type ReportQuery } from "@/core/reporting-period";
 import { OrderTable } from "@/components/order-table";
-import { SyncButton, AutoSync } from "@/components/sync-button";
+import { SyncButton } from "@/components/sync-button";
 
 export default async function Overview({ searchParams }: { searchParams: Promise<ReportQuery> }) {
   const period = pageReportPeriod(await searchParams);
@@ -29,7 +29,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     previousPeriod ? getDashboardData(previousPeriod) : null,
     previousPeriod ? getAdvertisementData(previousPeriod, { campaign: "shop" }) : null,
   ]);
-  const status = orderStatusSummary(data.orders);
+  const status = data.orderStatus ?? orderStatusSummary(data.orders);
   const cancelled = cancellationDetails(data.cancellations ?? { all: status.cancelled, paid: 0, unpaid: 0, returned: 0, unknown: status.cancelled });
   const demo = data.mode === "demo";
   const adSpend = ads.coverage.available > 0 ? ads.summary.spend : null;
@@ -59,7 +59,6 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   ];
   const topProducts = [...data.products].sort((a, b) => b.units - a.units).slice(0, 4);
   return <>
-    <AutoSync shopId={data.shop?.id} enabled={!demo && data.shop?.status === "CONNECTED"} lastSyncedAt={data.lastSyncedAt}/>
     <PageHeading title="Overview" actions={<div className="flex flex-wrap items-start gap-2">{data.shop && <FinanceSyncButton shopId={data.shop.id} disabled={demo || data.shop.status !== "CONNECTED"}/>}<SyncButton shopId={data.shop?.id} disabled={demo || data.shop?.status !== "CONNECTED"}/></div>}/>
     <dl className="metrics-grid">{cards.map((card, index) => <Metric key={card.label} label={card.label} value={card.value} note={card.note} icon={card.icon} featured={index === 0} comparison={comparisons && previousPeriod ? <OverviewComparison {...comparisons[index]} label={previousPeriod.label}/> : undefined}/>)}</dl>
     <ReportingControls period={period}/>

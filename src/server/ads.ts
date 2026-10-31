@@ -13,6 +13,8 @@ import { amountString, amountUnits } from "../core/money.ts";
 import { digest } from "../core/security.ts";
 import { AppError } from "../core/errors.ts";
 import type { Prisma } from "../generated/prisma/client.ts";
+import { cachedReport, reportShop, touchReportShop } from "./report-context.ts";
+import { reportOrders, reportOrderSelect } from "./report-queries.ts";
 
 export function adReportFilters(query: ReportQuery): { dataset?: string; campaign?: string } {
   const filters: { dataset?: string; campaign?: string } = {};
@@ -27,7 +29,10 @@ export function adReportFilters(query: ReportQuery): { dataset?: string; campaig
 export async function importAdReport(ownerId: string, value: unknown, now = new Date()) {
   const input = validateAdImport(value, now);
   if (input.datasetKey.startsWith("shopee-api-")) throw new AppError("RESERVED_ADS_DATASET", 403);
-  return persistAdReport(ownerId, input, now);
+  const result = await persistAdReport(ownerId, input, now);
+  const shop = await getDb().shop.findUnique({ where: { environment_sourceShopId: { environment: input.environment, sourceShopId: input.sourceShopId } }, select: { id: true } });
+  if (shop) await touchReportShop(shop.id);
+  return result;
 }
 export async function importSyncedAdReport(shop: { id: string; ownerId: string; sourceShopId: string }, generation: number, reports: AdsRow[], now: Date) {
   if (!reports.length) return { imported: 0, unchanged: 0, datasetKey: SHOPEE_ADS_DATASET };
@@ -159,7 +164,7 @@ function demoAdvertisement(period: ReportPeriod, requestedCampaign?: string): Ad
 
 async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, period: ReportPeriod, filters: { dataset?: string; campaign?: string }): Promise<AdvertisementData> {
   await db.$executeRaw`SET TRANSACTION READ ONLY`;
-  const shop = await db.shop.findFirst({ where: { ownerId, environment: getConfig().SHOPEE_ENV }, include: { connection: { select: { status: true } }, syncStates: true } });
+  const shop = await db.shop.findFirst({ where: { ownerId, environment: getConfig().SHOPEE_ENV }, select: { id: true, connection: { select: { status: true } }, syncStates: { select: { resource: true, checkpoint: true, coverageFrom: true, lastSuccessAt: true, lastErrorCode: true, updatedAt: true } } } });
   const state = shop?.syncStates.find(s => s.resource === "ads");
   const requestAt = shop?.syncStates.find(s => s.resource === "ads-request")?.checkpoint;
   const sync: AdvertisementData["sync"] = { connected: shop?.connection?.status === "CONNECTED", lastSuccessAt: state?.lastSuccessAt?.toISOString() ?? null,
@@ -174,15 +179,18 @@ async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, 
   if (!dataset) return { ...buildAdvertisementData(period, [], new Map(), metadata, null), sync };
   const where = { datasetId: dataset.id, startAt: { gte: new Date(period.fromISO), lt: new Date(period.effectiveToISO) }, endAt: { lte: new Date(period.toISO) } };
   if (await db.adAttributionAllocation.count({ where: { report: where } }) > 50_000 || await db.adReportBucket.count({ where }) > 20_000) throw new AppError("REPORT_RANGE_TOO_LARGE", 400);
-  const rows = await db.adReportBucket.findMany({ where, include: { allocations: true }, orderBy: { startAt: "asc" } });
-  const revisions = await db.$queryRaw<{ reportId: string; payload: Prisma.JsonValue }[]>`
-    SELECT r."reportId", r.payload FROM ad_report_revisions r
+  const rows = await db.adReportBucket.findMany({ where, select: { id: true, campaignKey: true, campaignName: true, grain: true,
+    startAt: true, endAt: true, spend: true, revenue: true, sourceAsOf: true, attributionComplete: true, outcomesComplete: true,
+    allocations: { select: { sourceKey: true, orderSn: true, sourceLineKey: true, amount: true, disposition: true,
+      confirmedRefund: true, provisional: true, returnReferences: true } } }, orderBy: { startAt: "asc" } });
+  const revisions = await db.$queryRaw<{ reportId: string; sourceMetrics: Prisma.JsonValue }[]>`
+    SELECT r."reportId", r.payload->'sourceMetrics' AS "sourceMetrics" FROM ad_report_revisions r
     JOIN ad_report_buckets b ON b.id = r."reportId" AND b."sourceDigest" = r.digest
     WHERE b."datasetId" = ${dataset.id} AND b."startAt" >= ${new Date(period.fromISO)}
       AND b."startAt" < ${new Date(period.effectiveToISO)} AND b."endAt" <= ${new Date(period.toISO)}`;
-  const payloads = new Map(revisions.map(row => [row.reportId, row.payload]));
+  const payloads = new Map(revisions.map(row => [row.reportId, row.sourceMetrics]));
   const sns = [...new Set(rows.flatMap(row => row.allocations.map(a => a.orderSn)))];
-  const orders = sns.length ? await db.order.findMany({ where: { shopId: shop!.id, orderSn: { in: sns } }, include: { items: true, returns: true } }) : [];
+  const orders = sns.length ? await db.order.findMany({ where: { shopId: shop!.id, orderSn: { in: sns } }, select: reportOrderSelect }) : [];
   const evidence = new Map<string, AttributionEvidence>();
   for (const order of orders) for (const item of order.items) evidence.set(attributionLineKey(order.orderSn, item.sourceLineKey), { lineRevenue: amountString(amountUnits(item.paidUnitPrice.toString()) * BigInt(item.quantity)), name: item.name, sku: item.sku, orderBuyerTotal: order.totalAmount.toString(), orderStatus: order.status, paymentStatus: order.paymentStatus, updatedAt: order.sourceUpdatedAt.toISOString(), returns: order.returns.map(value => ({ reference: value.returnSn, updatedAt: value.sourceUpdatedAt.toISOString(), confirmedRefund: value.confirmedRefund?.toString() ?? null })) });
   // A narrow date selection must not hide excess credits for the same item in
@@ -200,8 +208,7 @@ async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, 
     }
   }
   const reports: StoredReport[] = rows.map(row => {
-    const payload = payloads.get(row.id);
-    const parsed = adSourceMetricsSchema.safeParse(payload && typeof payload === "object" && !Array.isArray(payload) ? payload.sourceMetrics : undefined);
+    const parsed = adSourceMetricsSchema.safeParse(payloads.get(row.id));
     return ({ ...(parsed.success ? { sourceMetrics: parsed.data } : {}), key: row.id, campaignKey: row.campaignKey, campaignName: row.campaignName, grain: row.grain as "DAY" | "HOUR", start: row.startAt.toISOString(), end: row.endAt.toISOString(), spend: row.spend.toString(), revenue: row.revenue.toString(), sourceAsOf: row.sourceAsOf.toISOString(), attributionComplete: row.attributionComplete, outcomesComplete: row.outcomesComplete,
     allocations: row.allocations.map(a => ({ key: a.sourceKey, orderSn: a.orderSn, lineKey: a.sourceLineKey, amount: a.amount.toString(), disposition: a.disposition as "RETAINED" | "CANCELLED" | "RETURNED", confirmedRefund: a.confirmedRefund.toString(), provisional: a.provisional, returnReferences: a.returnReferences })),
   }); });
@@ -222,10 +229,7 @@ async function readAdvertisement(db: Prisma.TransactionClient, ownerId: string, 
     if (await db.order.count({ where: cohortWhere }) > 10_000 || await db.orderItem.count({ where: { order: cohortWhere } }) > 50_000) {
       outcomes = buildOutcomeCohorts([], ["COHORT_RANGE_TOO_LARGE"]);
     } else {
-      const cohortOrders = await db.order.findMany({ where: cohortWhere, include: {
-        items: { include: { variant: { select: { sourceItemId: true } } } }, returns: true,
-        financialSnapshots: { where: { source: "SHOPEE_ESCROW" }, orderBy: { revision: "desc" }, take: 1 },
-      } });
+      const cohortOrders = await reportOrders(db, shop!.id, period.fromISO, period.effectiveToISO);
       outcomes = buildOutcomeCohorts(cohortOrders.map(order => ({
         id: order.id, createdAt: order.sourceCreatedAt.toISOString(), status: order.status, paymentStatus: order.paymentStatus,
         items: order.items.map(item => ({ itemId: item.variant.sourceItemId, revenue: amountString(amountUnits(item.paidUnitPrice.toString()) * BigInt(item.quantity)) })),
@@ -255,5 +259,7 @@ export async function getAdvertisementData(period: ReportPeriod, filters: { data
     return demoAdvertisement(period, filters.campaign);
   }
   const actor = await requireDashboardUser();
-  return advertisementForOwner(actor.ownerId, period, filters);
+  const shop = await reportShop(actor.ownerId, getConfig().SHOPEE_ENV);
+  if (!shop) return advertisementForOwner(actor.ownerId, period, filters);
+  return cachedReport(shop, "ads", period, filters, () => advertisementForOwner(actor.ownerId, period, filters));
 }
