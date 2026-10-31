@@ -1,12 +1,12 @@
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { getDashboardData } from "@/server/dashboard";
+import { getWorkspaceData } from "@/server/page-data";
 import { getConfig, connectionMissing, loginMissing } from "@/server/env";
 import { Card, Badge, Button, Status, PageHeading } from "@/components/ui";
 import { Icon } from "@/components/icons";
 import { timeLabel } from "@/lib/format";
 
 export default async function Integrations({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const data = await getDashboardData();
+  const data = await getWorkspaceData();
   const config = getConfig();
   const query = await searchParams;
   const missing = connectionMissing();

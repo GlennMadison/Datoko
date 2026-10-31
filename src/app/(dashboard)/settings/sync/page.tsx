@@ -1,13 +1,13 @@
 import { getDb } from "@/server/db";
 import { HISTORY_RESOURCE, HISTORY_START } from "@/core/history-sync";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getDashboardData } from "@/server/dashboard";
+import { getWorkspaceData } from "@/server/page-data";
 import { Card, Badge, Status, EmptyState, PageHeading } from "@/components/ui";
 import { SyncButton, HistorySyncButton } from "@/components/sync-button";
 import { timeLabel } from "@/lib/format";
 
 export default async function SyncHistory() {
-  const data = await getDashboardData();
+  const data = await getWorkspaceData();
   const [history, run] = data.mode === "live" && data.shop ? await Promise.all([
     getDb().syncState.findUnique({ where: { shopId_resource: { shopId: data.shop.id, resource: HISTORY_RESOURCE } } }),
     getDb().syncRun.findFirst({ where: { shopId: data.shop.id, reason: "HISTORICAL" }, orderBy: { createdAt: "desc" } }),

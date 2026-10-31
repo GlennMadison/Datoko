@@ -18,11 +18,13 @@
     "db:deploy": "prisma migrate deploy",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "node --test tests/*.test.ts",
+    "test:pool": "node --experimental-test-module-mocks --import tsx --test tests/pool-lifecycle.spec.ts",
     "test:history": "node --experimental-test-module-mocks --import tsx --test tests/history-worker.spec.ts",
     "test:db": "tsx --test tests/*.integration.ts",
     "test:e2e": "node scripts/run-browser-tests.mjs",
     "test:auth": "node scripts/run-browser-tests.mjs --auth",
     "check": "npm run test && npm run typecheck",
+    "usage:db": "tsx scripts/database-usage.ts",
     "secrets": "node scripts/generate-secrets.mjs"
   },
   "dependencies": {
@@ -30,6 +32,7 @@
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
     "@tailwindcss/postcss": "^4.1.0",
+    "@vercel/functions": "3.10.5",
     "@vercel/speed-insights": "^2.0.0",
     "better-auth": "^1.7.10",
     "class-variance-authority": "^0.7.1",

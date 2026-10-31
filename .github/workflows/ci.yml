@@ -33,6 +33,8 @@ jobs:
       - run: npm run db:generate
       - run: npx prisma validate
       - run: npm test
+      - run: npm run test:history
+      - run: npm run test:pool
       - run: npm run typecheck
       - run: npm run db:deploy
       - run: npm run test:db

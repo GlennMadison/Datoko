@@ -13,6 +13,10 @@ import { redirect } from "next/navigation";
 import { AppError } from "../core/errors.ts";
 import { dayStart, periodContains, resolveReportPeriod, shiftDate, type ReportPeriod } from "../core/reporting-period.ts";
 import { activityTrend, type ActivityPoint } from "./reporting.ts";
+import { cache } from "react";
+import { orderStatusSummary } from "../core/order-status.ts";
+import { reportShop, cachedReport, type ReportShop } from "./report-context.ts";
+import { reportOrders, reportProducts, reportReturns } from "./report-queries.ts";
 
 export type OrderRow = { id: string; orderSn: string; name: string; variationName?: string | null; sku: string; quantity: number; total: number; merchandise: string; status: string; paymentStatus?: string; createdAt: string; hasReturn: boolean; costMissing: boolean; profit?: number | null; profitQuality?: OrderProfit["quality"]; payout?: number | null; cogs?: number | null };
 export type ProductRow = ProductVariantRow;
@@ -36,6 +40,7 @@ export type DashboardData = {
   returnsReady?: boolean;
   returnsError?: string | null;
   cancellations?: ReturnType<typeof cancellationBreakdown>;
+  orderStatus?: ReturnType<typeof orderStatusSummary>;
   profitSummary?: { covered: number; eligible: number; estimated: number; payout: number; cogs: number; lastSyncedAt: string | null; error: string | null };
 };
 
@@ -90,33 +95,39 @@ export function demoDashboard(period: ReportPeriod): DashboardData {
   };
 }
 
-export async function requireDashboardUser() {
+export const requireDashboardUser = cache(async () => {
   if (loginMissing().length) redirect("/setup");
   return requireUser(await headers()).catch(error => {
     if (error instanceof AppError && ["SIGN_IN_REQUIRED", "AUTH_METHOD_REQUIRED"].includes(error.code)) redirect("/login");
     throw error;
   });
-}
+});
 
 export async function getDashboardData(selection: ReportPeriod | number = 30): Promise<DashboardData> {
   const period = typeof selection === "number" ? resolveReportPeriod({ days: String(selection) }) : selection;
   if (isDemo()) return demoDashboard(period);
   const actor = await requireDashboardUser();
-  const db = getDb();
   const config = getConfig();
-  const shop = await db.shop.findFirst({ where: { ownerId: actor.ownerId, environment: config.SHOPEE_ENV }, include: { connection: true, syncStates: true } });
+  const shop = await reportShop(actor.ownerId, config.SHOPEE_ENV);
   if (!shop) return { mode: "live", shop: null, metrics: { sales: 0, placedValue: 0, orders: 0, completed: 0, cancelled: 0, profit: null, refunds: null }, orders: [], products: [], returns: [], runs: [], trend: [], lastSyncedAt: null, coverageFrom: null, ordersCheckpoint: null, financeReady: false };
+  return cachedReport(shop, "overview", period, null, async () => {
+    const data = await dashboardForShop(shop, period);
+    return { ...data, orderStatus: orderStatusSummary(data.orders), orders: data.orders.slice(0, 10), returns: [], runs: [] };
+  });
+}
+
+export async function dashboardForShop(shop: ReportShop, period: ReportPeriod): Promise<DashboardData> {
+  const db = getDb();
   const range = { gte: new Date(period.fromISO), lt: new Date(period.effectiveToISO) };
   const [orderCount, returnCount] = await Promise.all([
     db.order.count({ where: { shopId: shop.id, sourceCreatedAt: range } }),
     db.returnCase.count({ where: { shopId: shop.id, sourceUpdatedAt: range } }),
   ]);
   if (orderCount > 50_000 || returnCount > 50_000) throw new AppError("REPORT_RANGE_TOO_LARGE", 400);
-  const [orders, variants, returns, runs] = await Promise.all([
-    db.order.findMany({ where: { shopId: shop.id, sourceCreatedAt: range }, include: { items: true, returns: { select: { id: true, status: true, confirmedRefund: true } }, financialSnapshots: { where: { source: "SHOPEE_ESCROW" }, orderBy: { revision: "desc" }, take: 1 } }, orderBy: { sourceCreatedAt: "desc" } }),
-    db.productVariant.findMany({ where: { shopId: shop.id }, include: { costs: { where: { effectiveAt: { lte: new Date() } }, orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }], take: 1 }, orderItems: { orderBy: [{ order: { sourceCreatedAt: "desc" } }, { id: "asc" }], take: 1, select: { name: true, order: { select: { sourceCreatedAt: true } } } } } }),
-    db.returnCase.findMany({ where: { shopId: shop.id, sourceUpdatedAt: range }, include: { order: { select: { orderSn: true } } }, orderBy: { sourceUpdatedAt: "desc" } }),
-    db.syncRun.findMany({ where: { shopId: shop.id }, orderBy: { createdAt: "desc" }, take: 30 }),
+  const [orders, variants, returns] = await Promise.all([
+    reportOrders(db, shop.id, period.fromISO, period.effectiveToISO),
+    reportProducts(shop.id),
+    reportReturns(db, shop.id, period.fromISO, period.effectiveToISO),
   ]);
   const returnState = shop.syncStates.find(state => state.resource === "returns");
   const returnsReady = Boolean(returnState?.lastSuccessAt && !returnState.lastErrorCode);
@@ -156,7 +167,7 @@ export async function getDashboardData(selection: ReportPeriod | number = 30): P
     orders: orders.map(order => ({ id: order.id, orderSn: order.orderSn, name: order.items[0]?.name ?? "Order", variationName: order.items[0]?.variationName ?? null, sku: order.items[0]?.sku ?? "-", quantity: order.items.reduce((sum, item) => sum + item.quantity, 0), total: Number(order.totalAmount), merchandise: order.merchandiseAmount.toString(), status: order.status, paymentStatus: order.paymentStatus, createdAt: order.sourceCreatedAt.toISOString(), hasReturn: order.returns.length > 0, costMissing: order.items.some(item => item.costSnapshot === null), profit: profits.get(order.id)!.profit === null ? null : Number(profits.get(order.id)!.profit), profitQuality: profits.get(order.id)!.quality, payout: profits.get(order.id)!.payout === null ? null : Number(profits.get(order.id)!.payout), cogs: profits.get(order.id)!.cogs === null ? null : Number(profits.get(order.id)!.cogs) })),
     products: groupProducts(variants.map(variant => ({ id: variant.id, shopId: variant.shopId, sourceItemId: variant.sourceItemId, sourceModelId: variant.sourceModelId, name: variant.orderItems[0]?.name ?? variant.name, variationName: variant.variationName, nameObservedAt: (variant.orderItems[0]?.order.sourceCreatedAt ?? variant.createdAt).toISOString(), sku: variant.sku ?? "No SKU", cost: variant.costs[0] ? Number(variant.costs[0].amount) : null, units: unitsByVariant.get(variant.id) ?? 0 }))),
     returns: returns.map(value => ({ id: value.id, returnSn: value.returnSn, orderSn: value.order.orderSn, status: value.status, reportedAmount: value.reportedAmount ? Number(value.reportedAmount) : null, confirmedRefund: value.confirmedRefund ? Number(value.confirmedRefund) : null, updatedAt: value.sourceUpdatedAt.toISOString() })),
-    runs: runs.map(run => ({ id: run.id, status: run.status, reason: run.reason, processed: run.processed, errorCode: run.errorCode, createdAt: run.createdAt.toISOString() })),
+    runs: [],
     lastSyncedAt: state?.lastSuccessAt?.toISOString() ?? null, coverageFrom: state?.coverageFrom?.toISOString() ?? null, ordersCheckpoint: state?.checkpoint?.toISOString() ?? null, financeReady: eligible.length === covered.length && profitSummary.estimated === 0,
   };
 }

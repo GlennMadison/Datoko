@@ -21,7 +21,10 @@ export async function POST(request: Request, context: { params: Promise<{ varian
     const db = getDb();
     const variant = await db.productVariant.findFirst({ where: { id: variantId, shop: { ownerId: actor.ownerId } } });
     if (!variant) throw new AppError("VARIANT_NOT_FOUND", 404);
-    await db.skuCostVersion.create({ data: { variantId, amount: input.amount, effectiveAt: new Date(), createdBy: actor.ownerId, note: input.note || null } });
+    await db.$transaction(async tx => {
+      await tx.skuCostVersion.create({ data: { variantId, amount: input.amount, effectiveAt: new Date(), createdBy: actor.ownerId, note: input.note || null } });
+      await tx.shop.update({ where: { id: variant.shopId }, data: { updatedAt: new Date() }, select: { id: true } });
+    });
     return NextResponse.redirect(new URL("/products?saved=true", config.APP_BASE_URL), 303);
   } catch (error) { return errorResponse(error); }
 }

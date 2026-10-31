@@ -9,6 +9,7 @@ import { runShopSync } from "./sync.ts";
 import { syncDueAds } from "./ads-sync.ts";
 
 export async function runSyncBatch() {
+  const started = performance.now();
   const config = liveConfig();
   // One scheduled batch at a time, including across cold starts/deployments.
   return withShopLock(`sync-worker:${config.SHOPEE_ENV}`, async () => {
@@ -43,6 +44,6 @@ export async function runSyncBatch() {
     let ads = { imported: 0, unchanged: 0, completed: 0, failed: 0 };
     try { ads = await syncDueAds({ shouldPause: () => Date.now() >= deadline - 25_000 }); }
     catch (error) { console.error(JSON.stringify({ event: "ads_batch_failed", code: publicErrorCode(error) })); ads.failed++; }
-    return { connectedShops, completed, continued, failed, ads };
+    return { connectedShops, completed, continued, failed, ads, durationMs: Math.round(performance.now() - started), empty: !jobs.length && !ads.completed && !ads.failed && !ads.imported };
   });
 }

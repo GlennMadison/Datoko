@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { REPORT_KEYS, resolveReportPeriod, type ReportPeriod, type ReportQuery } from "@/core/reporting-period";
 import { ReportDatePicker } from "./report-date-picker";
 import { ReportIntervalControl } from "./report-interval";
+import { Button } from "./ui/button";
+import { RefreshCw } from "lucide-react";
 import { useReportNavigation } from "./report-navigation";
 
 export function ReportingControls({ period, children }: { period: ReportPeriod; children?: ReactNode }) {
@@ -20,16 +22,12 @@ export function ReportingControls({ period, children }: { period: ReportPeriod; 
     update(changes, true);
     return true;
   }, [update, getQuery, period.error, period.interval]);
-  useEffect(() => {
-    if (!["today", "this-week", "this-month", "last7", "last30", "last90"].includes(period.preset)) return;
-    const timer = setInterval(() => refresh(), 60_000);
-    return () => clearInterval(timer);
-  }, [period.preset, refresh]);
   return <section className="report-controls" aria-label="Reporting period" aria-busy={pending}>
     <div className="report-toolbar">
       <ReportDatePicker period={period} onSelect={navigate}/>
       {children}
       <ReportIntervalControl period={period}/>
+      <Button variant="outline" size="icon-sm" onClick={() => { setError(""); void refresh().catch(() => setError("Could not refresh the report. Please try again.")); }} disabled={pending} aria-label="Refresh report" title="Refresh report"><RefreshCw className="size-4"/></Button>
     </div>
     <div className="report-resolved"><span data-testid="reporting-range">{period.label}</span><span role="status">{pending ? "Updating report..." : ""}</span></div>
     {(error || period.error) && <p className="report-error" role="alert">{error || period.error}</p>}
