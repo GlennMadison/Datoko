@@ -73,8 +73,10 @@ export async function withShopLock<T>(key: string, action: () => Promise<T>): Pr
     locked = true;
     return await action();
   } finally {
-    try { if (locked) await connection.query("SELECT pg_advisory_unlock(hashtextextended($1,0))", [key]); }
-    finally { connection.release(); }
+      let destroy = false;
+      try { if (locked) await connection.query("SELECT pg_advisory_unlock(hashtextextended($1,0))", [key]); }
+      catch (error) { destroy = true; throw error; }
+      finally { connection.release(destroy); }
   }
 }
 

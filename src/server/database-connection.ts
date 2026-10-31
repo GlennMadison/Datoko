@@ -6,9 +6,9 @@ export function databaseConnectionOptions(): Pick<PoolConfig, "connectionString"
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) throw new AppError("DATABASE_NOT_CONFIGURED", 503);
 
-  // Suspended Vercel instances cannot run pg's idle timeout. Release each
-  // checked-out connection back to Supabase's session pooler immediately,
-  // including pg-boss connections, instead of retaining idle server slots.
+  // Pools without a suspension lifecycle hook (pg-boss) release each client
+  // immediately. The shared application pool overrides this after attaching
+  // Vercel's idle-drain hook; its session advisory locks still use session mode.
   const pooling = process.env.VERCEL === "1" ? { maxUses: 1 } : {};
 
   const certificate = process.env.DATABASE_SSL_CA?.replace(/\\n/g, "\n").trim();

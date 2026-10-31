@@ -36,10 +36,15 @@ keep their existing latency. Actual order imports still respect the configured
 sync interval. Worker summaries now include duration and an `empty` flag. Use
 these to assess whether a future scheduler change is justified.
 
-Session advisory locks protect jobs and rotating Shopee tokens. The production
-connection release policy remains necessary while those locks use session
-pooling. Do not switch the worker to transaction pooling without replacing
-session locks with safe leases/transaction-compatible coordination.
+Session advisory locks protect jobs and rotating Shopee tokens. The shared
+application pool now attaches Vercel's `attachDatabasePool` lifecycle hook and
+reuses connections, with a one-second idle timeout. Idle clients are drained
+before suspension; active, checked-out lock clients stay held until explicit
+unlock. If unlocking fails, the connection is destroyed rather than returned
+with a possibly held lock. Pg-boss's separate unattached pool keeps `maxUses: 1`.
+The pinned `@vercel/functions` package uses the existing Vercel runtime and does
+not require another service. Do not switch the worker to transaction pooling
+without replacing session locks with safe leases/transaction-compatible coordination.
 
 ## Measurements
 

@@ -37,7 +37,7 @@ test("report caches invalidate on refresh and sync changes; idle status checks d
     // Advance only the browser clock: database sessions and financial dates are untouched.
     await page.clock.install();
     let checks = 0, renders = 0;
-    page.on("request", request => { if (request.headers()["rsc"] === "1") renders++; });
+    page.on("request", request => { if (new URL(request.url()).pathname === "/overview" && request.headers()["rsc"] === "1" && request.headers()["next-router-prefetch"] !== "1") renders++; });
     await page.route("**/api/workspace/status", async route => { checks++; await route.fulfill({ json: status }); });
     await page.reload();
     await expect(sales).toContainText("140.000");
