@@ -7,6 +7,11 @@ if (!databaseUrl || !new URL(databaseUrl).pathname.toLowerCase().includes("test"
 test("owner sees a compact summary and original-date payment and refund updates", async ({ page, request }) => {
   const pool = new Pool({ connectionString: databaseUrl });
   const email = process.env.AUTH_E2E_OWNER_EMAIL!, shopId = randomUUID(), variantId = randomUUID(), orderId = randomUUID(), sourceShopId = String(Date.now());
+  // Real ingestion advances its resource checkpoint after committing changes.
+  // Direct fixture SQL must do the same to invalidate reports for old dates.
+  const markSynced = async (resource: string) => {
+    await pool.query('UPDATE sync_states SET "updatedAt"=now(),"lastSuccessAt"=now() WHERE "shopId"=$1 AND resource=$2', [shopId, resource]);
+  };
   try {
     // Reproduce the standard cosmetic rule without disabling browser protections.
     await page.addInitScript(() => {
@@ -68,18 +73,22 @@ test("owner sees a compact summary and original-date payment and refund updates"
     await expect(page.getByRole("button", { name: "Ads sync queued", exact: true })).toBeVisible();
     await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
     await pool.query(`UPDATE orders SET status='UNPAID',"paymentStatus"='UNPAID' WHERE id=$1`, [orderId]);
+    await markSynced("orders");
     await page.reload();
     await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
     await pool.query(`UPDATE orders SET status='COMPLETED',"paymentStatus"='PAID' WHERE id=$1`, [orderId]);
+    await markSynced("orders");
     await page.reload();
     await expect(page.getByTestId("estimated-roas")).toHaveText("9.01x");
     await pool.query(`INSERT INTO return_cases (id,"shopId","orderId","returnSn",status,"confirmedRefund","sourceUpdatedAt") VALUES ($1,$2,$3,'ADS-BROWSER-RETURN','ACCEPTED',300000,now())`, [randomUUID(), shopId, orderId]);
+    await markSynced("returns");
     await page.reload();
     await expect(page.getByTestId("estimated-roas")).toHaveText("6.31x");
     await expect(page.getByTestId("estimated-revenue")).toContainText("700.000");
     await expect(page.getByTestId("adjusted-outcomes-revenue")).toContainText("300.000");
     await expect(page.getByTestId("original-roas")).toHaveText("10.00x");
     await pool.query(`UPDATE return_cases SET "confirmedRefund"=1000000 WHERE "orderId"=$1`, [orderId]);
+    await markSynced("returns");
     await page.reload();
     await expect(page.getByTestId("estimated-roas")).toHaveText("0.00x");
   } finally {
