@@ -17,16 +17,18 @@ export async function NeedsAttention() {
   ];
   return <Card role="region" aria-label="Needs attention">
     <div className="card-heading"><h2>Needs attention</h2></div>
-    {rows.length > 0 && <ul className="divide-y divide-border">
-      {rows.map(row => <li key={row.href}>
-        <Link href={row.href} prefetch={false} className="text-link flex min-h-10 w-full items-center justify-between gap-3 py-2">
-          <span>{row.label}</span>{row.count !== null && <Badge tone="orange">{row.count}</Badge>}
-        </Link>
-      </li>)}
-    </ul>}
-    {summary.status === "unavailable" && <p className="muted">Unable to check orders and costs. Refresh to try again.</p>}
-    {summary.status === "ready" && rows.length === 0 && <p className="muted">All caught up.</p>}
-    {summary.status === "no-shop" && <p className="muted">Connect a shop to see current issues.</p>}
-    {summary.status === "disconnected" && <Link href="/settings/integrations" className="text-link">Reconnect Shopee to check your shop.</Link>}
+    <div className="px-5 pb-5">
+      {rows.length > 0 && <ul className="divide-y divide-border">
+        {rows.map(row => <li key={row.href}>
+          <Link href={row.href} prefetch={false} className="text-link flex min-h-10 w-full items-center justify-between gap-3 py-2">
+            <span>{row.label}</span>{row.count !== null && <Badge tone="orange">{row.count}</Badge>}
+          </Link>
+        </li>)}
+      </ul>}
+      {summary.status === "unavailable" && <p className="muted">Unable to check orders and costs. Refresh to try again.</p>}
+      {summary.status === "ready" && rows.length === 0 && <p className="muted">All caught up.</p>}
+      {summary.status === "no-shop" && <p className="muted">Connect a shop to see current issues.</p>}
+      {summary.status === "disconnected" && <Link href="/settings/integrations" className="text-link">Reconnect Shopee to check your shop.</Link>}
+    </div>
   </Card>;
 }
