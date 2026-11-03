@@ -2,16 +2,17 @@ import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 
-test("attention is shop scoped, ignores report dates, and clears after fixes", async ({ page, baseURL, browser }) => {
+test("attention is shop scoped, ignores report dates, and clears after fixes", async ({ page, baseURL, browser }, testInfo) => {
   const databaseUrl = process.env.TEST_DATABASE_URL;
   if (!databaseUrl || !new URL(databaseUrl).pathname.toLowerCase().includes("test")) throw new Error("Use a dedicated test database.");
   const pool = new Pool({ connectionString: databaseUrl });
   const shopId = randomUUID(), variantId = randomUUID(), saleId = randomUUID();
   const pending = randomUUID(), email = pending + "@example.test";
   const otherEmail = randomUUID() + "@example.test";
+  const fixtureIp = testInfo.project.name === "mobile" ? 43 : 41;
   const password = "datoko-attention-browser-password";
   try {
-    const signup = await page.request.post("/api/auth/sign-up/email", { headers: { Origin: baseURL! }, data: { name: "Attention shop", email, password } });
+    const signup = await page.request.post("/api/auth/sign-up/email", { headers: { Origin: baseURL!, "X-Forwarded-For": "192.0.2." + fixtureIp }, data: { name: "Attention shop", email, password } });
     expect(signup.status()).toBe(200);
     const owner = (await signup.json()).user.id;
     await pool.query(`INSERT INTO shops (id,"ownerId","sourceShopId",environment,name,"updatedAt")
@@ -49,7 +50,7 @@ test("attention is shop scoped, ignores report dates, and clears after fixes", a
     const other = await browser.newContext({ ignoreHTTPSErrors: true });
     try {
       const otherPage = await other.newPage();
-      const signup = await otherPage.request.post(baseURL + "/api/auth/sign-up/email", { headers: { Origin: baseURL! },
+      const signup = await otherPage.request.post(baseURL + "/api/auth/sign-up/email", { headers: { Origin: baseURL!, "X-Forwarded-For": "192.0.2." + (fixtureIp + 1) },
         data: { name: "Other user", email: otherEmail, password } });
       expect(signup.status()).toBe(200);
       await otherPage.goto(baseURL + "/overview/attention?kind=orders");
