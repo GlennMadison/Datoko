@@ -1,3 +1,4 @@
+import { NeedsAttention } from "@/components/needs-attention";
 import { OverviewComparison } from "@/components/overview-comparison";
 import { overviewComparisonPeriod } from "@/core/period-comparison";
 import { cancellationDetails } from "@/core/cancellations";
@@ -61,6 +62,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
   return <>
     <PageHeading title="Overview" actions={<div className="flex flex-wrap items-start gap-2">{data.shop && <FinanceSyncButton shopId={data.shop.id} disabled={demo || data.shop.status !== "CONNECTED"}/>}<SyncButton shopId={data.shop?.id} disabled={demo || data.shop?.status !== "CONNECTED"}/></div>}/>
     <dl className="metrics-grid">{cards.map((card, index) => <Metric key={card.label} label={card.label} value={card.value} note={card.note} icon={card.icon} featured={index === 0} comparison={comparisons && previousPeriod ? <OverviewComparison {...comparisons[index]} label={previousPeriod.label}/> : undefined}/>)}</dl>
+    <NeedsAttention/>
     <ReportingControls period={period}/>
     <div className="analytics-grid">
       <Card role="region" aria-label="Sales chart">{trend.length ? <OverviewTrend data={trend}/> : <><div className="card-heading"><h2>Sales over time</h2></div><EmptyState title="No sales in this period">Connect a shop or choose a different date range.</EmptyState></>}</Card>
