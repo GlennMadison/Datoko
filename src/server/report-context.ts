@@ -9,7 +9,7 @@ import { getDb } from "./db.ts";
 export const reportShop = cache(async (ownerId: string, environment: string) => {
   const shop = await getDb().shop.findFirst({ where: { ownerId, environment }, select: {
     id: true, name: true, ownerId: true, environment: true, sourceShopId: true, updatedAt: true,
-    connection: { select: { status: true, version: true, updatedAt: true } },
+    connection: { select: { status: true, version: true, updatedAt: true, connectedAt: true } },
     syncStates: { select: { resource: true, checkpoint: true, coverageFrom: true, lastSuccessAt: true, lastErrorCode: true, updatedAt: true } },
   } });
   if (!shop) return null;
